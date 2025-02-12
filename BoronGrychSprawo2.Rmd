@@ -1,0 +1,247 @@
+---
+title: "Regresja i analiza wariancji - Sprawozdanie 2"
+author:
+  name: Karolina Boron, Anna Grych
+  affiliation: Politechnika Krakowska
+subtitle: Analiza wariancji - sprawozdanie
+output:   
+  html_document:
+    theme: readable
+    df_print: paged
+    toc: true
+    toc_float: true
+---
+
+
+```{r setup, include=FALSE} 
+knitr::opts_chunk$set(cache = TRUE, warning = TRUE, message = FALSE)
+library(tidyverse)  
+``` 
+
+# Zadanie 1
+
+Zarząd firmy "Firma na A", która zajmuje się, między innymi sprzedażą telefonów komórkowych zastanawia się nad zmianą szaty graficznej strony, na której można dokonać zakupu ich flagowego smartfona. Przygotowali dwie nowe szaty graficzne dla strony, jedna z dużym, prostokątnym, czerwonym guzikiem "kup teraz", druga z dużym, okrągłym, srebrnym guzikiem kup teraz. Za pomocą standardowej metodologii testu A/B/C kierowali z jednakowym prawdopodobieństwem nowych użytkowników na jedną z 3 stron. Przez 30 dni mierzyli co 6 godzin ilość sprzedanych sztuk smartfona dla każdej z wersji. Waszym zadaniem jest zbadanie za pomocą poznanych metod (analizy wariancji i jej różnych modyfikacji) odpowiedź na pytanie, czy nowe szaty graficzne miały wpływ na sprzedaż, a jeśli tak to która z szat jest najlepsza.
+
+Opis danych:
+
+version - 1 - stara, 2 - prostokąt, 3 - kółko
+
+sales - ilość sprzedanych sztuk
+
+## Wczytanie danych 
+
+```{r}
+sites <- readr::read_csv('zadanie1.csv')
+head(sites)
+```
+
+## Założenia
+
+Założenia jednoczynnikowej analizy wariancji:
+
+- niezależność obserwacji,
+- zmienna zależna mierzona na skali ilościowej,
+- rozkład wyników w analizowanych grupach jest zbliżony do rozkładu normalnego,
+- równoliczność obserwacji w grupach (możliwe niewielkie różnice),
+- homogeniczność wariancji.
+
+
+## Przygotowanie do Jednoczynnikowej Analizy Wariancji
+
+```{r}
+str(sites)
+```
+
+Ze względu na to, że chcemy przeprowadzić jednoczynnikową analizę wariancji (ANOVA) musimy przekształcić zmienną version z zmiennej numerycznej na kategorialną. 
+
+```{r}
+sites <- sites %>% dplyr::mutate(version = as.character(version))
+```
+
+
+```{r}
+ggplot(sites, aes(x=version, y=sales)) + geom_point(aes(color=version), position='jitter') + labs(title = 'Wykres punktowy sprzedaży w zależności od reszty', x='Wersja', y='Sprzedaż') + theme(legend.position = 'none')
+```
+
+Wersja 1 ma umiarkowane rozproszenie wyników sprzedaży, z większością wartości skupionych wokół 200, ale występują też punkty odstające. Wersja 2 cechuje się największą stabilnością, ponieważ punkty są bardziej skoncentrowane, co wskazuje na przewidywalną sprzedaż. Możemy zauważyć, że sprzedaż koncentruje się wśród wyższych wartości. Wersja 3 wykazuje lekkie zróżnicowanie wyników, z równomiernym rozproszeniem w szerokim zakresie, ale średnia sprzedaż wydaje się zbliżona do poprzednich wersji. Każda z tych wersji ma podobną wielkość próby. 
+
+```{r}
+means <- sites %>% group_by(version) %>% summarise(mean=mean(sales)) %>% mutate(n = 1:3) %>% print()
+```
+
+Wersja 2 ma najwyższą średnią sprzedaż, co sugeruje możliwą różnicę w efektywności w porównaniu do wersji 1 i 3. Co potwierdza nasze wnioski z wykresu punktowego.
+
+```{r}
+ggplot(sites, aes(x=version, y=sales)) + geom_boxplot(alpha=0.7) + labs(title = "Wykres pudełkowy sprzedaży w zależności od wersji", x='Wersja', y='Sprzedaż')
+```
+
+Wykres pudełkowy wskazuje, że mediany sprzedaży są zbliżone między wersjami, przy czym wersja 2 ma nieznacznie wyższą medianę. Możemy zauważyć, że wersja 2 ma najwięcej wartości odstających. Wykresy pudełkowe nie budzą wątpliwości, aby móc przyjąć, że rozkłady poszczególnych wersji mają charakter rozkładów normalnych.
+
+Dla pewności spójrzmy jeszcze na histogramy.
+
+```{r}
+ggplot(sites, aes(x = sales)) + geom_histogram( fill = "lightblue", color = "black", alpha = 0.7) + facet_wrap(~ version, scales = "free_y") + labs(title = "Histogram sprzedaży dla każdej wersji strony", x = "Sprzedaż", y = "Częstotliwość") + theme_minimal()
+```
+
+Wszystkie trzy wersje strony mają rozkłady o kształcie zbliżonym do rozkładu normalnego, z wyraźnymi wartościami centralnymi.
+
+Następnie sprawdźmy, czy wariancje są homogeniczne.
+
+```{r}
+bartlett.test(sales~version, data = sites)
+```
+P-value wynosi 0.08502, co jest większe niż 0.05, nie odrzucamy hipotezy zerowej. To sugeruje, że nie ma wystarczających dowodów na to, że wariancje różnią się istotnie. Można przyjąć, że wariancje w tych grupach są jednorodne.
+
+Zakładamy również niezależność obserwacji ze względu, że wersje stron nie zależą od siebie.
+Zatem możemy uznać, że dane nie budzą większych zastrzeżeń i spełniają główne założenia jednoczynnikowej analizy wariancji, co pozwala nam przejść do dalszej analizy.
+
+## Jednoczynnikowa Analiza Wariancji
+
+```{r}
+summary(aov(sales ~ version, data = sites))
+```
+Liczba stopni swobody się zgadza, ponieważ mamy trzy grupy - version $(3-1=2)$. Wyniki jednoczynnikowej analizy wariancji wskazują na statystycznie istotną różnicę między grupami, ponieważ p-value jest mniejsze niż 0,05. Wartość statystyki F = 11.13 sugeruje, że różnice między grupami są większe niż zmienność wewnątrz grup, co oznacza, że zmiana szaty graficznej miała wpływ na sprzedaż. Na podstawie tych wyników możemy odrzucić hipotezę zerową i stwierdzić, że średnie sprzedaży różnią się pomiędzy wersjami stron. Aby określić, która wersja jest "najlepsza", przeprowadzimy procedurę Tukeya-Kramera.
+
+## Analiza Tuckeya-Kramera
+
+```{r}
+TukeyHSD(aov(sales ~ version, data = sites))
+```
+
+Wyniki testu Tukeya wskazują, że wersja 2 jest statystycznie istotnie lepsza od wersji 1, z różnicą średnich sprzedaży wynoszącą 23.67 sztuki (p = 0.0000625). Przedział ufności dla tej różnicy mieści się w zakresie 10.71 do 36.64, co potwierdza istotność wyniku. Natomiast porównanie wersji 3 i 1 wykazało, że nie ma istotnej różnicy w średniej sprzedaży (p = 0.8957), z różnicą wynoszącą tylko 2.47 sztuki, a przedział ufności obejmował 0 (-10.50 do 15.43). Oznacza to, że zmiana z wersji 1 na wersję 3 nie miała wpływu na sprzedaż. W porównaniu wersji 3 i 2, wersja 3 ma średnio o 21.21 sztuki mniej niż wersja 2 (p = 0.0003977), co wskazuje na istotny spadek sprzedaży przy tej zmianie. Przedział ufności dla tej różnicy wynosi od -34.17 do -8.24, co potwierdza istotność wyniku. Podsumowując, wersja 2 okazała się najlepsza, a wersja 3 najgorsza w kontekście sprzedaży.
+
+Dla lepszej interpretacji wyniku przedstawimy wykres.
+
+```{r}
+plot(TukeyHSD(aov(sales ~ version, data = sites)))
+```
+
+Zauważmy w wersji 2-1, że przedział nie obejmuje 0, co oznacza istotną różnicę – wersja 2 ma wyższą średnią niż wersja 1. Dla porównania 3-1 przedział przecina 0, więc różnica między wersjami 3 i 1 nie jest istotna statystycznie. W przypadku 3-2 przedział również nie obejmuje 0, co wskazuje, że wersja 3 ma istotnie niższą średnią niż wersja 2. 
+Wnioski z wykresu potwierdzają, że wersja 2 wyróżnia się najwyższą średnią, a różnice między pozostałymi wersjami są mniej wyraźne.
+
+## Wniosek
+
+Zatem najlepszą szatą graficzną jest wersja 2 z prostokątnym czerwonym guzikiem „kup teraz”, która istotnie zwiększa sprzedaż w porównaniu do obecnej wersji strony oraz wersji z okrągłym srebrnym przyciskiem.
+
+
+
+# Zadanie 2
+
+Po waszym sukcesie dotyczącym wyboru szaty graficznej strony, zarząd "Firmy na A" postawił was przed kolejnym, trudniejszym zadaniem. Kolejną z branży, którą zajmuje się firma jest streaming video w internecie. Inżynierowie firmy stworzyli nową funkcjonalność autoodtwarzania, która ich zdaniem ma zwiększyć czas oglądania wideo podczas jednej sesji przez konkretnego użytkownika, a co za tym idzie zwiększyć przychody firmy z reklam. Ich zdaniem ta funkcjonalność szczególnie będzie działała na dzieci. Ponownie za pomocą metdologii testu A/B kierowali użytkowników z jednakowym prawdopodobieństwem na wersje strony z nowym odtwarzaczem lub ze starym. Za pomocą dwuczynnikowej analizy wariancji sprawdź, czy inżynierowie mieli racje.
+
+Opis danych:
+
+group - 1 - użytkownicy poniżej 16 roku życia, 2 - użytkownicy powyżej 16 roku życia, ale poniżej 40tego, 3 - użytkownicy powyżej 40 roku życia
+
+
+version - 1 - wersja ze starym odtwarzaczem, 2 - wersja z nowym odtwarzaczem
+
+
+time - czas w minutach spędzony na oglądaniu w danej sesji
+
+## Wczytanie danych
+
+```{r}
+player <- readr::read_csv('zadanie2.csv')
+head(player)
+```
+
+## Założenia
+
+W podstawowym modelu dwuczynnikowej analizy wariancji mamy następujące założenia:
+
+- próby wewnątrz grup mają rozkład normalny,
+- wszystkie próby wewnątrz grup mają stałą i jednakową wariancję,
+- próby są niezależne.
+
+
+## Przygotowanie do Dwuczynnikowej Analizy Wariancji
+
+```{r}
+str(player)
+```
+
+```{r}
+player <- player %>% mutate(group = factor(group, levels = c(1, 2, 3), labels = c("Below 16", "16-40", "Above 40")), version = factor(version, levels = c(1, 2), labels = c("Old Player", "New Player")))
+```
+
+```{r}
+ggplot(player, aes(x=group, y=time)) + geom_boxplot(alpha=0.7) + labs(title = "Wykresy pudełkowe dla każdej z wersji", x='Grupa wiekowa', y='Czas') + facet_wrap(~version)
+```
+
+Wykresy przedstawiają czasy wykonania zadań dla trzech grup wiekowych w dwóch wersjach eksperymentu.
+Grupa wiekowa 1 ma najwyższe czasy, z większym zróżnicowaniem wyników i obecnością wartości odstających. Grupy 2 i 3 osiągają niższe i bardziej jednorodne czasy, zbliżone między sobą w obu wersjach. Brak istotnych różnic między wersjami może wskazywać na ich porównywalny  wpływ na badane zmienne.
+
+Przejdźmy do sprawdzenia normalności za pomocą histogramu.
+
+```{r}
+ggplot(player, aes(x = time)) + geom_histogram(binwidth = 1, fill = "skyblue", color = "black", alpha = 0.7) + facet_grid(group ~ version) + labs(title = "Histogramy dla każdej z wersji", x = "Czas (minuty)", y = "Liczba użytkowników")
+```
+
+Przyglądając się histogramom zauważamy, że niektóre z nich mogą budzić nasze wątpliwości względem normalności rozkładu. Zatem użyjmy testu Levene'a, który nie wymaga spełnienia założenia o normalności danych.
+
+Homogeniczność wariancji - test Levene'a
+
+```{r, message=FALSE, warning=FALSE}
+library(car)
+leveneTest(time ~ group* version, data = player)
+```
+
+P-value ($0.1173$) jest większe niż $0.05$, więc nie odrzucamy hipotezy zerowej, co sugeruje, że wariancje między grupami są równe. 
+
+```{r}
+ggplot(player, aes(x = version, y = time, color = group, group = group)) + stat_summary(fun = mean, geom = 'point', size = 3) +  stat_summary(fun = mean, geom = 'line', linewidth = 1) + labs(title = "Średni czas oglądania wideo w zależności od wersji odtwarzacza",  x = "Wersja odtwarzacza", y = "Średni czas oglądania (minuty)", color = "Grupa wiekowa") + theme_minimal() + scale_color_manual(values = c("pink", "violet", "lightblue"))
+```
+
+Wersja odtwarzacza nie ma wpływu na średni czas oglądania. Możemy zauważyć minimalny spadek średniego czasu oglądania przy użyciu nowego odtwarzacza - głównie w grupie wiekowej poniżej 16.
+
+Możemy przejść do dalszej analizy.
+
+## Dwuczynnikowa Analiza Wariancji
+
+```{r}
+summary(aov(time ~ group*version, data=player))
+```
+
+Wynik dwuczynnikowej analizy wariancji pokazuje, że grupa wiekowa ma istotny wpływ na czas oglądania, ponieważ p-value wynosi znacznie poniżej 0,05. Natomiast wersja z nowym czy starym odtwarzaczem nie wpływa istotnie na czas, ponieważ $p-value = 0,657$. Interakcja grupy wiekowej i wersji odtwarzacza również nie ma istotnego wpływu na czas, ponieważ $p-value = 0,912$. 
+
+## Analiza Tuckeya-Kramera
+
+Przeprowadzimy Analize Tuckeya-Kramera jedynie dla grupy wiekowej, ponieważ tylko tam odrzuciliśmy hipotezę zerową.
+
+```{r}
+TukeyHSD(aov(time ~ group, data = player))
+```
+
+Analiza porównań wielokrotnych Tukeya wykazała istotne różnice statystyczne między średnimi czasami dla wszystkich trzech grup. Grupa „16-40” ma średni czas o 40,063 jednostek niższy niż grupa „Below 16”, a grupa „Above 40” o 38,901 jednostek niższy niż „Below 16”, co wskazuje na wyraźnie wyższe czasy w grupie „Below 16”. Różnica między grupami „Above 40” i „16-40” wynosi 1,162 jednostki, co również jest statystycznie istotne, choć różnica jest znacznie mniejsza. Wszystkie przedziały ufności dla tych porównań są rozłączne z zerem, co potwierdza istotność różnic. Wyniki sugerują, że grupa „Below 16” znacząco różni się od pozostałych, podczas gdy grupy „16-40” i „Above 40” różnią się w mniejszym stopniu.
+
+Dla lepszej interpretacji wyniku przedstawimy wykres.
+
+```{r}
+plot(TukeyHSD(aov(time ~ group, data = player)))
+```
+
+Na wykresie można zauważyć, że wszystkie z przedziałów nie przecinają linii zerowej, co wskazuje na statystycznie istotne różnice między średnimi. Wykres przedstawiający wyniki testu prawidłowo odzwierciedla różnice pomiędzy grupami.
+
+## Wniosek
+
+Możemy ostatecznie stwierdzić, iż inżynierowie mylili się, że nowa funkcjonalność zwiększy czas oglądania. Nie wpłynęła ona także istotnie na czas oglądania przez dzieci.  Rzeczywiście osoby poniżej 16 roku życia spędzają więcej czasu na oglądaniu wideo niż starsi użytkownicy, jednak nie ma na to wpływu wersja odtwarzacza. 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

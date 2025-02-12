@@ -1,0 +1,725 @@
+---
+title: "Regresja i analiza wariancji - Projekt"
+author: 
+  name: 'Karolina Boron, Anna Grych'
+  affiliation: 'Politechnika Krakowska'
+output: 
+  html_document:
+    theme: readable
+    toc: true
+    toc_float: true
+    df_print: paged
+---
+
+# Wczytanie i opis danych
+
+## Zbiór danych
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+library(tidyverse)
+library(ggplot2)
+library(car)
+library(dplyr)
+library(tidyr)
+library(gridExtra)
+```
+
+```{r,warning=FALSE}
+data <- read.csv("kc_house_data.csv")
+
+head(data)
+```
+
+## Usunięcie kolumn
+
+```{r}
+data <- data %>% select(-id, -date)
+```
+
+Usunięcie dwóch pierwszych kolumn uprości nasze dane i pozwoli skupić się na zmiennych, które rzeczywiście mają wpływ na cenę. 
+
+Usuwamy obserwacje, w których liczba sypialni (bedrooms) lub łazienek (bathrooms) wynosi 0.
+
+## Statystyki opisowe
+
+```{r}
+summary(data)
+```
+
+Dane dotyczące nieruchomości obejmują szeroki zakres cen, od 75 000 do 7 700 000, przy medianie 450 000 i średniej 540 088, co wskazuje na asymetryczny rozkład z kilkoma bardzo drogimi nieruchomościami. Liczba sypialni waha się od 0 do 33, choć wartości maksymalne, takie jak 33, są wyjątkami, a mediana wynosi 3. Liczba łazienek wynosi od 0 do 8, z medianą 2,25, co oznacza, że większość domów ma od 2 do 3 łazienek. Powierzchnia użytkowa waha się od 290 do 13 540 stóp kwadratowych, z medianą 1 910, co wskazuje, że większość domów ma standardowy metraż. Powierzchnia działki ma bardzo szeroki zakres, od 520 do 1 651 359 stóp kwadratowych, ale mediana wynosi 7 618, co oznacza, że większość działek jest znacznie mniejsza od maksymalnych wartości. Większość domów ma od 1 do 2 pięter. Jedynie 0,75% nieruchomości znajduje się nad wodą, co może podnosić ich wartość, a niewielka liczba domów posiada ładny widok. Stan techniczny większości nieruchomości oceniono jako przeciętny (mediana 3 na 5), natomiast standard wykończenia, z medianą 7 na 13, wskazuje na umiarkowanie wysoki standard większości domów. Powierzchnia nadziemna stanowi główną część powierzchni użytkowej, a większość domów nie posiada piwnic. Rok budowy nieruchomości waha się od 1900 do 2015, z medianą 1975, co wskazuje, że większość domów ma co najmniej kilkadziesiąt lat. Tylko niewielka część nieruchomości była odnawiana, a większość renowacji dotyczy ostatnich lat.W efekcie średnia dla tej zmiennej (~84,4) nie ma większego sensu interpretacyjnego. Dane obejmują szeroki zakres kodów pocztowych, co wskazuje na różnorodność lokalizacji w tym rejonie. Szerokość i długość geograficzna potwierdzają, że dane dotyczą domów w tym hrabstwie. Średnia powierzchnia użytkowa domów w sąsiedztwie wynosi 1 987 stóp kwadratowych, co sugeruje, że otoczenie jest zbliżone pod względem wielkości domów. Powierzchnia działek w sąsiedztwie ma jednak znaczne różnice, od bardzo małych po dużych posiadłości. 
+
+## Opis zbioru danych
+
+Hrabstwo King, położone w stanie Waszyngton, jest największym hrabstwem w regionie Puget Sound i obejmuje miasto Seattle, będące jego stolicą. Jest znane z dynamicznego rynku nieruchomości, różnorodnych społeczności oraz bliskości pięknych terenów przyrodniczych, takich jak Góry Kaskadowe i Zatoka Puget. Charakteryzuje się także zróżnicowaniem mieszkań – od luksusowych rezydencji nad wodą po bardziej przystępne domy w podmiejskich dzielnicach.
+
+Zbiór danych zawiera ceny sprzedaży domów w hrabstwie King. Zawiera informacje dotyczące sprzedanych domów w latach 2014–2015. Poniżej znajduje się opis cech, które użyjemy w budowaniu modelu:
+
+
+- id: Unikalny identyfikator przypisany do każdej sprzedaży domu.
+
+- data: Data sprzedaży (data sprzedaży domu).
+
+- price: Cena sprzedaży domu (zmienna docelowa).
+
+- bedrooms: Liczba sypialni w domu.
+
+- bathrooms: Liczba łazienek w domu.
+
+- sqft_living: Powierzchnia mieszkalna domu (w stopach kwadratowych).
+
+- sqft_lot: Powierzchnia działki (w stopach kwadratowych).
+
+- floors: Liczba pięter w domu.
+
+- waterfront: Czy dom znajduje się na nabrzeżu (1: dom jest na nabrzeżu, 0: dom nie jest na nabrzeżu).
+
+- view: Jakość widoku z domu (skala od 0 do 4).
+
+- condition: Ogólny stan domu (skala od 1 do 5).
+
+- grade: Ogólna ocena domu. Związane z budową i projektowaniem domu (skala od 1 do 13).
+
+- sqft_above: Powierzchnia domu nad ziemią (w stopach kwadratowych).
+
+- sqft_basement: Powierzchnia piwnicy (w stopach kwadratowych).
+
+- yr_built: Rok budowy domu.
+
+- yr_renovated: Rok, w którym dom został odnowiony.
+
+- zipcode: Kod pocztowy, pod którym znajduje się dom.
+
+- lat.: Współrzędna szerokości geograficznej domu (położenie geograficzne).
+
+- long: Współrzędna długości geograficznej domu (położenie geograficzne).
+
+- sqft_living15: Średnia powierzchnia mieszkalna sąsiednich domów (w stopach kwadratowych).
+
+- sqft_lot15: Średnia wielkość działki sąsiednich domów (w stopach kwadratowych).
+
+
+## Opis celu zadania
+
+Pewna firma deweloperska poprosiła nas o informacje, w jakiej cenie najkorzystniej mogliby sprzedać posiadane nieruchomości w hrabstwie King.
+Mamy za zadanie stworzyć model, który umożliwi dokładną wycenę domów na podstawie ich cech i maksymalizację zysków.
+
+Przyjmijmy poziom istotności równy $\alpha = 0.05$.
+
+
+# Badamy rodzaj zmiennych
+
+```{r}
+variables <- c("bedrooms", "bathrooms", "sqft_living", "floors", "waterfront", 
+               "view", "condition", "grade", "sqft_above","sqft_basement", "yr_built","yr_renovated", "zipcode", "lat", "long")
+
+for (var in variables) {
+  p <- ggplot(data, aes_string(x = var, y = "price", color = var)) + 
+    geom_point() +
+    labs(title = paste("Price vs", var), x = var, y = "Price") +
+    theme_minimal()
+  print(p)
+}
+```
+
+
+Zmienne floors, waterfront, view, condition, grade mogą być traktowane jako kategoryczne, ponieważ reprezentują one różne dyskretne poziomy, które są odrębnymi kategoriami, a nie wartościami ciągłymi, nie są wystarczająco zagęszczone. 
+
+Jak już wyżej zauważyliśmy także zmienna yr_renoveted wzbudza pewne wątpliwości, gdyż większość wartości to 0, co oznacza brak odnowienia. Dla ułatwienia iterpretacji tej zmiennej, zmienimy ją na zmienną binarną  (0 - nieodnowiony, 1 - odnowiony), dzięki temu możemy analizować wpływ samego faktu renowacji, ignorując dokładny rok.
+
+```{r}
+
+data$renovated <- ifelse(data$yr_renovated > 0, 1, 0)
+
+
+table(data$renovated)  
+head(data[, c("yr_renovated", "renovated")])  
+
+```
+
+
+```{r}
+str(data)
+```
+
+Zbiór danych zawiera liczby całkowite oraz zmiennoprzecinkowe (numeryczne). 
+Zwróćmy uwagę, że zmienne waterfront, view, condition i grade są zapisane jako zmienne całkowite, które prawdopodobnie mogą reprezentować kategorie (co również zauważyliśmy na wykresie wyżej). 
+
+# Badanie zmiennej price
+
+```{r}
+ggplot(data, aes(y = price)) + geom_boxplot(fill = "lightblue", outlier.color = "red", outlier.size = 2) + labs(title = "Cena nieruchomości", y = "Cena", x = "") + theme_minimal()
+```
+
+Z wykresu boxplot możemy wnioskować, że większość cen nieruchomości skupia się w wąskim zakresie, co odzwierciedla niska wysokość pudełka. Wartości te są skoncentrowane w niższych przedziałach cenowych (do 1000000). Widoczne są jednak liczne wartości odstające, które sięgają nawet do 8 000 000. Wskazuje to na obecność nieruchomości premium, które znacząco różnią się ceną od reszty danych. Asymetria w rozkładzie wskazuje na potrzebę przekształcenia danych
+
+
+Sprawdźmy zatem jeszcze rozkład zmiennej na histogramie.
+```{r}
+ggplot(data, aes(x = price)) + geom_histogram(binwidth = 50000, fill = "blue", color = "black") + labs(title = "Rozkład cen nieruchomości", x = "Cena", y = "Liczba nieruchomości") + theme_minimal()
+```
+
+
+Z wykresu wynika, że większość nieruchomości mieści się w przedziale cenowym od 0 do około 1 miliona, co pokazuje silną prawostronną skośność rozkładu. Wysokie ceny, w szczególności powyżej 2 milionów, występują bardzo rzadzko, co może wskazywać na obecność wartości odstających związanych z luksusowymi nieruchomościami.
+
+
+# Badanie graficzne zależności między zmiennymi - boxplot
+
+```{r}
+ggplot(data, aes(x=bedrooms)) + geom_boxplot(outlier.color='red', outlier.size=5) + labs(title="Wykres pudełkowy liczby pokoi", x='Liczba pokoi', y = "") + scale_y_discrete(labels=NULL, breaks=NULL) + theme_minimal()
+```
+
+```{r}
+ggplot(data, aes(x = as.factor(bedrooms), y = price, fill = as.factor(bedrooms))) + geom_boxplot(fill = "lightgreen", outlier.color = "red", outlier.size = 2) + labs(title = "Cena w zależności od liczby pokoi", x = "Liczba pokoi", y = "Cena") + theme_minimal() + theme(plot.title = element_text(hjust = 0.5))
+```
+
+Wykres pokazuje, że ceny nieruchomości rosną wraz z liczbą pokoi. Mediana ceny jest wyższa dla domów z większą liczbą pokoi, ale widoczna jest również większa rozpiętość cen w tych grupach. Wartości odstające są szczególnie liczne w kategoriach z 4-8 pokojami, gdzie ceny mogą sięgać nawet 8000000. Nieruchomości z ekstremalnie dużą liczbą pokoi (11 i 33) są bardzo rzadkie.
+
+
+```{r}
+ggplot(data, aes(x = as.factor(bathrooms), y = price, fill = as.factor(bathrooms))) + geom_boxplot(fill = "lightcoral", outlier.color = "red", outlier.size = 2) + labs(title = "Cena w zależności od liczby łazienek", x = "Liczba łazienek", y = "Cena") + theme_minimal() + theme(plot.title = element_text(hjust = 0.5))
+```
+
+Ceny nieruchomości rosną wraz z liczbą łazienek, co wskazuje na wyraźną korelację między tymi zmiennymi. Nieruchomości z większą liczbą łazienek mają bardziej zróżnicowane ceny, ponieważ są tam szersze pudełka i dłuższe wąsy. Dla każdej liczby łazienek występują wartości odstające, szczególnie widoczne przy większych liczbach łazienek.
+
+
+Popatrzmy na boxploty dla zmiennych, które uznaliśmy że mogą być kategoryczne. 
+
+```{r}
+ggplot(data, aes(x = as.factor(waterfront), y = price, fill = as.factor(waterfront))) + geom_boxplot() + labs(title = "Cena w zależności od widoku na wodę", x = "Widok na wodę (0 = brak, 1 = tak)", y = "Cena") + theme_minimal() + theme(plot.title = element_text(hjust = 0.5))
+```
+
+Nieruchomości z widokiem na wodę mają większą rozpiętość cen, co świadczy o ich różnorodności. Domy bez widoku mają liczne wartości odstające, które pokazują, że niektóre z nich również osiągają wysokie ceny. Natomiast domy z widokiem są bardziej ekskluzywne, ponieważ nie występują wśród nich tanie nieruchomości.
+
+
+```{r}
+ggplot(data, aes(x = factor(view), y = price, fill = factor(view))) + geom_boxplot() + labs(title = "Cena w zależności od jakości widoku", x = "Jakość widoku", y = "Cena sprzedaży") + theme_minimal() + theme(plot.title = element_text(hjust = 0.5))
+```
+
+
+Wykres pokazuje, że wraz ze wzrostem jakości widoku zwiększają się mediany cen nieruchomości, co sugeruje, że lepszy widok pozytywnie wpływa na ich wartość. Nieruchomości z najwyższą jakością widoku osiągają najwyższe ceny i charakteryzują się większym zakresem cenowym. Dla każdej kategorii jakości widoku widoczne są wartości odstające.
+
+
+```{r}
+ggplot(data, aes(x = factor(condition), y = price, fill = factor(condition))) + geom_boxplot() + labs(title = "Cena w zależności od ogólnego stanu domu", x = "Stan domu", y = "Cena sprzedaży") + theme_minimal() + theme(plot.title = element_text(hjust = 0.5))
+```
+
+Można zauważyć, że mediany cen są zbliżone w poszczególnych kategoriach stanu domu, a ich różnice są niewielkie. Domy w najlepszym stanie osiągają nieco wyższe mediany cen, ale nie ma tendencji wzrostu cen w miarę poprawy stanu. W każdej kategorii stanu występują wartości odstające, szczególnie w grupie o stanie 3, 4 i 5.
+
+```{r}
+ggplot(data, aes(x = factor(grade), y = price, fill = factor(grade))) + geom_boxplot() + labs(title = "Cena w zależności od oceny domu", x = "Ocena domu", y = "Cena sprzedaży") + theme_minimal() + theme(plot.title = element_text(hjust = 0.5))
+```
+
+Wykres pokazuje, że wraz ze wzrostem oceny domu rosną zarówno mediany cen, jak i ich zakres. Nieruchomości o najwyższych ocenach (12 i 13) osiągają znacznie wyższe ceny, co wskazuje na istotny wpływ oceny na wartość rynkową. Szczególnie w wyższych kategoriach ocen widoczne są wartości odstające, co sugeruje obecność domów luksusowych.
+
+
+```{r}
+ggplot(data, aes(x = factor(floors), y = price, fill = factor(floors))) + geom_boxplot() + labs(title = "Cena w zależności od liczby pięter", x = "Liczba pięter", y = "Cena sprzedaży") + theme_minimal() + theme(plot.title = element_text(hjust = 0.5))
+```
+
+
+Ceny nieruchomości rosną wraz ze wzrostem liczby pięter, szczególnie do 2,5 piętra, które wyróżnia się wysoką medianą ceny. Domy o liczbie pięter od 1 do 2 mają więcej wartości odstających, niż te powyżej 3 pięter.
+
+# Zależność cen nieruchomości od różnych czynników
+
+```{r}
+p1 <- ggplot(data, aes(x = bedrooms, y = price)) + geom_point(alpha = 0.5) + labs(title = "Cena a liczba sypialni", x = "Liczba sypialni", y = "Cena (mln)") + theme_minimal()    + scale_y_continuous(labels = function(x) x / 1e6)
+
+p2 <- ggplot(data, aes(x = bathrooms, y = price)) + geom_point(alpha = 0.5) + labs(title = "Cena a liczba łazienek", x = "Liczba łazienek", y = "Cena (mln)") +                  theme_minimal() + scale_y_continuous(labels = function(x) x / 1e6)
+
+p3 <- ggplot(data, aes(x = sqft_lot, y = price)) + geom_point(alpha = 0.5) + labs(title = "Cena a pow. działki", x = "Powierzchnia działki (sqft)", y = "Cena (mln)") +          theme_minimal() + scale_y_continuous(labels = function(x) x / 1e6)
+
+p4 <- ggplot(data, aes(x = sqft_above, y = price)) + geom_point(alpha = 0.5) + labs(title = "Cena a pow. nad", x = "Powierzchnia nadziemna (sqft)", y = "Cena (mln)") +          theme_minimal() + scale_y_continuous(labels = function(x) x / 1e6)
+
+p5 <- ggplot(data, aes(x = sqft_basement, y = price)) + geom_point(alpha = 0.5) + labs(title = "Cena a pow. piwnicy", x = "Powierzchnia piwnicy (sqft)", y = "Cena (mln)") +     theme_minimal() + scale_y_continuous(labels = function(x) x / 1e6)
+
+p6 <- ggplot(data, aes(x = yr_renovated, y = price)) + geom_point(alpha = 0.5) + labs(title = "Cena a rok renowacji", x = "Rok renowacji", y = "Cena (mln)") + theme_minimal()    + scale_y_continuous(labels = function(x) x / 1e6)
+
+p7 <- ggplot(data, aes(x = as.factor(zipcode), y = price)) + geom_point(alpha = 0.5) + labs(title = "Cena a kod pocztowy", x = "Kod pocztowy (zipcode)", y = "Cena (mln)") +     theme_minimal() + scale_y_continuous(labels = function(x) x / 1e6)
+
+p8 <- ggplot(data, aes(x = lat, y = price)) + geom_point(alpha = 0.5) + labs(title = "Cena a szerokość geo.", x = "Szerokość geograficzna", y = "Cena (mln)") +                  theme_minimal() + scale_y_continuous(labels = function(x) x / 1e6)
+
+p9 <- ggplot(data, aes(x = long, y = price)) + geom_point(alpha = 0.5) + labs(title = "Cena a długość geo.", x = "Długość geograficzna", y = "Cena (mln)") + theme_minimal() +    scale_y_continuous(labels = function(x) x / 1e6)
+
+grid.arrange(p1, p2, p3, p4, p5, p6, p7, p8, p9, ncol = 3)
+```
+
+
+```{r}
+p10 <- ggplot(data, aes(x = sqft_living15, y = price)) + geom_point(alpha = 0.5) + labs(title = "Cena a pow. m. w sąsiedztwie", x = "Powierzchnia mieszkalna (sqft)", y =         "Cena (mln)") + theme_minimal() + scale_y_continuous(labels = function(x) x / 1e6)
+
+p11 <- ggplot(data, aes(x = sqft_lot15, y = price)) + geom_point(alpha = 0.5) + labs(title = "Cena a pow. dz. w sąsiedztwie", x = "Powierzchnia działki (sqft)", y = "Cena        (mln)") + theme_minimal() + scale_y_continuous(labels = function(x) x / 1e6)
+
+p12 <- ggplot(data, aes(x = yr_built, y = price)) + geom_point(alpha = 0.5) + labs(title = "Cena a rok budowy", x = "Rok budowy", y = "Cena (mln)") + theme_minimal() +            scale_y_continuous(labels = function(x) x / 1e6)
+
+p13 <- ggplot(data, aes(x = sqft_living, y = price)) + geom_point(alpha = 0.5) + labs(title = "Cena a pow. mieszkalna", x = "Powierzchnia mieszkalna (sqft)", y = "Cena           (mln)") + theme_minimal() + scale_y_continuous(labels = function(x) x / 1e6) 
+
+grid.arrange(p10, p11, p12, p13, ncol = 2)
+```
+
+Cena nieruchomości wzrasta wraz z liczbą sypialni, ale dla większej liczby sypialni (powyżej 10) obserwuje się wartości odstające, co może sugerować luksusowe nieruchomości. Zwiększająca się liczba łazienek koreluje z wyższymi cenami. Najwyższe ceny dotyczą domów z wieloma łazienkami, choć zdarzają się odstające przypadki. W większości przypadków większe działki nie są bezpośrednio skorelowane z wyższymi cenami, poza kilkoma odstającymi nieruchomościami, które mogą być luksusowe. Cena wyraźnie rośnie wraz z większą powierzchnią nadziemną. Jest to istotny czynnik, przy czym widać nieliczne odstające wartości. W przypadku większych piwnic obserwuje się tendencję do wyższych cen. Odnowione nieruchomości mają tendencję do wyższych cen, co widać zwłaszcza w przypadku najnowszych renowacji. Ceny w różnych kodach pocztowych są zróżnicowane, co może wynikać z prestiżu lokalizacji lub dostępnych udogodnień. Wyższe ceny występują w określonym zakresie szerokości geograficznej, co może wskazywać na bardziej pożądane lokalizacje w regionie. Podobnie jak szerokość, długość geograficzna również wpływa na ceny, z najwyższymi cenami skoncentrowanymi w określonym przedziale. Ceny nieruchomości rosną wraz z powierzchnią mieszkalną w sąsiedztwie, choć zależność jest bardziej rozproszona w porównaniu do powierzchni mieszkalnej samej nieruchomości. Powierzchnia działki w sąsiedztwie wydaje się mieć słabszy wpływ na cenę. Z kolei rok budowy wskazuje, że starsze nieruchomości mają bardziej zróżnicowane ceny, choć większość transakcji dotyczy budynków wzniesionych w XX wieku, z brakiem wyraźnego trendu czasowego. Powierzchnia mieszkalna danej nieruchomości wykazuje najsilniejszą zależność z ceną, gdzie większe powierzchnie wiążą się z wyższymi cenami, a rozproszenie punktów sugeruje, że jest to kluczowy czynnik wpływający na wartość rynkową. 
+
+
+Podsumowując, powierzchnia mieszkalna, zarówno w nieruchomości, jak i w jej otoczeniu, odgrywa kluczową rolę w kształtowaniu cen nieruchomości. Wyraźny wpływ na ceny mają także cechy jak powierzchnia nadziemna, liczba łazienek oraz szerokość geograficzna, co świadczy o ich istotności w procesie wyceny. Z kolei zmienne, takie jak powierzchnia działki, rok budowy, kod pocztowy czy powierzchnia działki, wydają się odgrywać mniejszą rolę.
+
+# Czyszczenie danych
+
+## Usunięcie kolumn
+
+Badamy czy istnieją domy, które mają zero łazienek lub zero pokoi.
+
+```{r}
+bedrooms_zero <- data %>% filter(bedrooms == 0)
+bathrooms_zero <- data %>% filter(bathrooms == 0)
+
+nrow(bedrooms_zero)
+
+nrow(bathrooms_zero)
+```
+
+Usuwamy je.
+
+```{r}
+data <- data %>% filter(bedrooms != 0 & bathrooms != 0)
+```
+
+```{r}
+data <- subset(data, bathrooms > 0.75)
+```
+
+Uważamy, że w klasycznym domu jest co najmniej jedna pełna łazienka. 
+
+## Usunięcie domów z 11 i 33 pokojami  
+
+```{r}
+data <- data[data$bedrooms != 11 & data$bedrooms != 33, ]
+```
+
+Usunięcie uzasadniłyśmy na podstawie boxplotów.
+
+
+## Usuwamy wartości zmiennej price większe od 1000000
+
+Na podstawie powyżej omawianych histogramu i boxplota zdecydowałyśmy się pracować nad wartościami cen poniżej 1mln.
+
+```{r}
+data <- subset(data, price <= 1000000)
+```
+
+Spójrzmy od razu na histrogram ceny po ograniczeniu. 
+
+```{r}
+ggplot(data, aes(x = price)) + geom_histogram(binwidth = 50000, fill = "blue", color = "black") + labs(title = "Rozkład cen nieruchomości", x = "Cena", y = "Liczba nieruchomości") + theme_minimal()
+```
+
+Teraz nasz rozkład cen jest w miarę normalny i możemy iść dalej.
+
+```{r}
+summary(data)
+```
+
+Sprawdzimy następnie histogramy zmiennych co do których mamy pewne wątpliwości po zbadaniu kwantyli.
+
+```{r}
+variables <- c( "sqft_living", "sqft_lot", "sqft_above", "sqft_basement",  "sqft_living15", "sqft_lot15")
+
+for (var in variables) {
+  p <- ggplot(data, aes_string(x = var)) + 
+    geom_histogram(binwidth = 30, fill = "blue", color = "black", alpha = 0.7) + 
+    labs(title = paste("Histogram zmiennej", var), x = var, y = "Częstotliwość") +
+    theme_minimal()
+  print(p)
+}
+```
+
+Decydujemy się na zlogarytmowanie tych zmiennych, ze wzgledu na wykładniczy charakter funckji.  
+
+```{r}
+data$log_lot <- log(data$sqft_lot)
+data$log_lot15 <- log(data$sqft_lot15)
+
+ggplot(data, aes(x = log_lot)) + geom_histogram(binwidth = 0.2, fill = "blue", color = "black", alpha = 0.7) + labs(title = "Histogram po zlogarytmowaniu zmiennej sqft_lot", x = "sqft_lot", y = "Częstotliwość") + theme_minimal()
+
+ggplot(data, aes(x = log_lot15)) + geom_histogram(binwidth = 0.2, fill = "blue", color = "black", alpha = 0.7) + labs(title = "Histogram po zlogarytmowaniu zmiennej sqft_lot15", x = "sqft_lot15", y = "Częstotliwość") + theme_minimal()
+```
+
+
+```{r}
+rightmost_value1 <- quantile(data$sqft_living, 0.75) + 1.5*IQR(data$sqft_living)
+rightmost_value2 <- quantile(data$sqft_living15, 0.75) + 1.5*IQR(data$sqft_living15)
+rightmost_value3 <- quantile(data$sqft_above, 0.75) + 1.5*IQR(data$sqft_above)
+rightmost_value4 <- quantile(data$sqft_basement, 0.75) + 1.5*IQR(data$sqft_basement)
+```
+
+
+```{r}
+data <- data %>%
+  mutate(
+    sqft_living = ifelse(sqft_living > rightmost_value1, rightmost_value1, sqft_living),
+    sqft_living15 = ifelse(sqft_living15 > rightmost_value2, rightmost_value2, sqft_living15),
+    sqft_above = ifelse(sqft_above > rightmost_value3, rightmost_value3, sqft_above),
+    sqft_basement = ifelse(sqft_basement > rightmost_value4, rightmost_value4, sqft_basement)
+  )
+
+plot1 <- ggplot(data, aes(x = sqft_living)) +
+  geom_histogram(bins = 30, fill = "blue", color = "black", alpha = 0.7) +
+  labs(title = "Histogram sqft_living (po clippingu)", x = "sqft_living", y = "Częstotliwość") +
+  theme_minimal()
+
+plot2 <- ggplot(data, aes(x = sqft_living15)) +
+  geom_histogram(bins = 30, fill = "blue", color = "black", alpha = 0.7) +
+  labs(title = "Histogram sqft_living15 (po clippingu)", x = "sqft_living15", y = "Częstotliwość") +
+  theme_minimal() + theme(plot.title = element_text(hjust = 0, margin = margin(l = -20)))
+
+plot3 <- ggplot(data, aes(x = sqft_above)) +
+  geom_histogram(bins = 30, fill = "blue", color = "black", alpha = 0.7) +
+  labs(title = "Histogram sqft_above (po clippingu)", x = "sqft_above", y = "Częstotliwość") +
+  theme_minimal() + theme(plot.title = element_text(hjust = 0, margin = margin(l = -20)))
+
+plot4 <- ggplot(data, aes(x = sqft_basement)) +
+  geom_histogram(bins = 30, fill = "blue", color = "black", alpha = 0.7) +
+  labs(title = "Histogram sqft_basement (po clippingu)", x = "sqft_basement", y = "Częstotliwość") +
+  theme_minimal() + theme(plot.title = element_text(hjust = 0, margin = margin(l = -20)))
+
+grid.arrange(plot1, plot2, plot3, plot4, ncol = 2)
+```
+
+
+Teraz kiedy mamy posprzątane dane możemy przejść do dalszej analizy.
+
+# Podział na ziór testowy i treningowy
+
+```{r, echo = FALSE}
+library(broom)
+
+model_summary <- function(model, test_data, test_y){
+  model_glance <- broom::glance(model)
+  model_augment <- broom::augment(model)
+  train_mae <- mean(abs(model_augment$.resid))
+  predicted_y <- predict(model, test_data)
+  test_rmse <- sqrt(mean((test_y - predicted_y)^2))
+  test_mae <- mean(abs(test_y - predicted_y))
+  test_mape <- mean(abs((test_y - predicted_y)/test_y))*100
+  print("Wartości charakterystyk liczbowych modelu.")
+  print("------------------------------------------")
+  cat("Treningowe R^2 wyniosło: ", model_glance$r.squared, "\n",
+  "Treningowe \"poprawione\" R^2 wyniosło: ", model_glance$adj.r.squared, "\n",
+  "Kryterium informacyjne Akaikego (AIC) wyniosło: ", model_glance$AIC, "\n",
+  "---------------------------------------------", "\n",
+  "Charakterystyki \"out-of-sample\"", "\n",
+  "Charakterystyka |   train  |   test   | \n", 
+  "RMSE wyniosło:  |", model_glance$sigma, "|", test_rmse , "|", "\n",
+    "MAE wyniosło:   |", train_mae, "|",  test_mae, "|" , "\n")
+}
+```
+
+```{r}
+set.seed(123)
+partition <- caret::createDataPartition(data$price,list = FALSE,p=0.75)
+train_data <- data[partition,]
+test_data <- data[-partition,]
+```
+
+```{r}
+MAE <- function(y_actual, y_predicted){
+  return(mean(abs(y_actual - y_predicted)))
+}
+RMSE <- function(y_actual, y_predicted){
+  return(sqrt(mean((y_actual-y_predicted)^2)))
+}
+```
+
+# Macierz korelacji
+
+```{r}
+data_cormat_every <- round(cor(data[,c(1,2,3,4,11,12,13,15,16,17,18,21,22)]),2)
+data_cormat_every
+```
+```{r, fig.width=10, fig.height=8}
+library(ggcorrplot)
+ggcorrplot(data_cormat_every, type = 'lower', lab = TRUE, lab_size = 3, lab_col = "black")
+```
+
+
+Zmienna price wykazuje najwyższą dodatnią korelację z cechami: sqft_living, sqft_living15, sqft_above, bathrooms. 
+Wysoka korelacja tych zmiennych z ceną wskazuje, że kluczowe znaczenie w kształtowaniu wartości nieruchomości mają cechy związane z komfortem użytkowania i funkcjonalnością. Większa powierzchnia mieszkalna zarówno w samej nieruchomości, jak i w jej sąsiedztwie, podnosi jej atrakcyjność i wartość rynkową.
+
+Natomiast zmienne, które wykazują niską lub niemal zerową korelację z ceną, to: zipcode, sqft_lot, yr_built.
+Może to sugerować, że te cechy nie są decydujące w ocenie wartości nieruchomości. Na przykład niski wpływ kodu pocztowego może wynikać z dużej różnorodności nieruchomości w ramach tego samego obszaru, natomiast rok budowy często traci na znaczeniu, jeśli budynki były modernizowane. Powierzchnia działki ma niewielkie znaczenie, co może być związane z tym, że w gęsto zabudowanych obszarach liczy się przede wszystkim przestrzeń mieszkalna, a nie wielkość gruntu.
+
+# Założenia modelu regresji wielorakiej
+
+Wykorzystując zapis macierzowy, nasze założenia to
+
+- liniowa zależność między zmienną objaśnianą, a objaśniającą postaci $\boldsymbol{y} = \boldsymbol{X}\boldsymbol{\beta} + \boldsymbol{\varepsilon}$,
+
+- wektor losowy $\varepsilon$ ma średnią $\boldsymbol{0}$,
+
+- wektor losowy $\varepsilon$ ma macierz kowariancji postaci $\sigma^2 \boldsymbol{I}$, gdzie $\sigma^2$ to pewna liczba rzeczywista,
+
+- zmienne losowe $\varepsilon_i, \varepsilon_j$ są ze sobą niezależne, dla różnych $i,j$,
+
+- wektor losowy $\varepsilon$ ma wielowymiarowy rozkład normalny $N(0, \sigma^2 \boldsymbol{I})$,
+
+- rzadna ze zmiennych objaśniających nie jest kombinacją liniową pozostałych, innymi słowy, zmienne objaśniające są liniowo niezależne, a macierz $X$ jest pełnego rzędu kolumnowego.
+
+# Budujemy model regresji liniowej wielorakiej
+
+# Model 
+
+```{r}
+model <- lm(price ~ sqft_living + bedrooms + floors + waterfront + view + condition + grade + sqft_basement + yr_built + renovated + zipcode + lat + long + log_lot, data = train_data) 
+```
+
+# Sprawdzenie założeń modelu regresji wielorakiej
+
+## Założenie 1: Zależność liniowa między zmienną objaśnianą, a zmiennymi objaśniającymi
+
+
+```{r}
+variables <- c("bedrooms", "bathrooms", "sqft_living", "sqft_lot", "sqft_above", "sqft_basement", "yr_built", "zipcode", "lat", "long", "sqft_living15", "sqft_lot15")
+
+for (var in variables) {
+  p <- ggplot(data, aes_string(x = var, y = "price", color = var)) + 
+    geom_point() +
+    geom_smooth(method='lm', formula=y~x, se=FALSE, color="blue") + 
+    labs(title = paste("Price vs", var), x = var, y = "Price") +
+    theme_minimal()
+  print(p)
+}
+```
+
+Silne zależności liniowe są widoczne między ceną, a zmiennymi takimi jak sqft_living oraz grade, co wskazuje, że wzrost tych parametrów bezpośrednio przekłada się na wyższą cenę nieruchomości. Z kolei słabsze zależności zauważalne w przypadku zmiennych takich jak sqft_lot czy yr_built sugerują, że brak wyraźnego trendu w tych przypadkach wskazuje na ich mniejsze znaczenie w procesie wyceny. 
+Dane lokalizacyjne, takie jak lat i long, również wykazują pewną zależność z ceną, jednak ich wpływ wydaje się bardziej regionalny i może wynikać ze specyfiki rynku nieruchomości w różnych obszarach. Dodatkowo zmienne view i waterfront wskazują na umiarkowany wpływ na cenę, co sugeruje, że nieruchomości z widokiem lub dostępem do wody mogą być bardziej atrakcyjne, ale ich znaczenie nie jest dominujące.
+
+## Założenie 2: Rozkład reszt
+
+Do zbadania normalności reszt przeanalizujemy histogram oraz wykres Q-Q reszt.
+
+```{r}
+ggplot(data.frame(resid = residuals(model)), aes(x = resid)) + geom_histogram(bins = 30, color = "darkblue", fill = "lightblue") + labs(title = "Histogram reszt z modelu", x = "Reszty", y = "Częstotliwość") + theme_minimal() + theme(plot.title = element_text(hjust = 0.5, face = 'bold'))
+```
+
+Histogram reszt wskazuje, że model dobrze dopasowuje dane, ponieważ rozkład reszt jest symetryczny i zbliżony do normalnego. Wartości odstające są niewielkie. Brak oznak systematycznych błędów sugeruje, że przewidywania są stabilne.
+
+
+```{r}
+ggplot(data.frame(resid = residuals(model)), aes(sample = resid)) + geom_qq() + geom_qq_line(color = "darkblue") + labs(title = "Wykres kwartyl-kwartyl reszt", x = "Kwartyle teoretyczne", y = "Kwartyle próbkowe") + theme_minimal() + theme(plot.title = element_text(hjust = 0.5, face = 'bold'))
+```
+
+
+Wykres Q-Q pokazuje, że reszty w większości przypadków są zbliżone do rozkładu normalnego, szczególnie w środkowej części danych. Jednak punkty na końcach (w ogonach) odchylają się delikatnie od linii prostej.  Ogólnie, założenie normalności reszt jest spełnione dla większości obserwacji. 
+
+Wykresy pokazują, że założenie normalności reszt dla naszego modelu jest spełnione.
+
+## Założenie 3: Zerowa średnia reszt
+
+Do sprawdzenia zerowej średniej reszt użyjemy klasycznego testu t studenta.
+
+```{r}
+t.test(model$residuals)
+```
+
+W naszym wypadku test t wykazał, że średnia reszt (w sensie statystycznym) jest równa zero.
+Wartość t bliska zeru sugeruje, że średnia próby jest bardzo bliska zakładanej wartości $0$. 
+P-value = 1, co oznacza brak podstaw do odrzucenia hipotezy zerowej.
+Przedział ufności obejmuje zero, co dodatkowo wspiera hipotezę zerową.
+Także szacowana średnia reszt wynosi w zasadzie zero. Wszystkie parametry wskazują na to, iż możemy uznać założenie o zerowej średniej reszt za spełnione. 
+
+## Założenie 4: Niezależność reszt
+
+```{r}
+ggplot(data.frame(Pred = fitted(model), Resid = residuals(model)), aes(x = Pred, y = Resid)) + geom_point(alpha = 0.5, color = "pink") + stat_smooth(method='loess', formula=y~x, se=FALSE)+ geom_hline(yintercept = 0, linetype = "dashed", color = "darkblue") + labs(title = "Wykres zależności reszt do przewidywanych wartości", x = "Przewidywane wartości", y = "Reszty") + theme_minimal() + theme(plot.title = element_text(hjust = 0.5, face = 'bold'))
+```
+
+
+Co do powyższego wykresu możemy mieć pewne wątpliwości. Dopasowana wygładzona niebieska linia w centum oscyluje blisko poziomu $0$ jednak na obu krańcach wykresu odbiega od wartości 0. Reszty nie są całkiem równomiernie rozrzucone, możemy zauważyć pewien wzorzec i może nam to naruszać założenie losowości reszt. Idealnie, reszty powinny być rozproszone losowo wokół 0, bez wyraźnego wzorca.
+
+Oprócz powyższego wykresu, dzięki któremu możemy wykryć strukturę zależnosci w resztach, zastosujemy jeszcze test Durbina Watsona. Warto pamiętać, że test Drubina-Watsona bada szczególny rodzaj korelacji, mianowicie zakładamy w nim, że reszty naszego modelu podążają za modelem autokorelacji.
+
+```{r, message=FALSE}
+library(lmtest)
+lmtest::dwtest(model)
+```
+
+Test Durbina-Watsona wykazał, że statystyka DW jest bliska 2 (1.9751), co sugeruje brak autokorelacji w resztach modelu. P-value równe 0.06297 wskazuje, że brak jest podstaw do odrzucenia hipotezy zerowej o niezależności reszt. 
+
+
+Według testu możemy zatem założyć, że nie ma struktury autoregresyjnej w modelu. 
+Jednak niestety wykres nam zaburza pewność spełnienia założenia co do niezalezności reszt w każdym sensie.
+
+
+Wzorce widoczne na wykresie wskazują, że model może być niedopasowany do danych, pomimo, że test "przechodzi".
+
+Na nasze potrzeby zakładamy jednak, iż założenie to jest spełnione. 
+
+## Założenie 5: Homoskedastyczność
+
+```{r}
+ggplot(model, aes(.fitted, sqrt(abs(.stdresid)))) +  geom_point(color = "lightblue") + stat_smooth(method = "loess", formula = y ~ x, se = FALSE, color = "darkblue") + labs(title = "Zależność pierwiastka standaryzowanych reszt od dopasowanych wartości", x = "Dopasowane wartości", y = "Pierwiastek standaryzowanych reszt") + theme_minimal()
+```
+
+Na wykresie zauważalny jest pewien nieliniowy trend w postaci lekkiego wzrostu reszt przy średnich wartościach dopasowań, a następnie spadku dla większych wartości. Taki kształt może wskazywać na problem z heteroskedastycznością.
+
+Sprawdźmy jeszcze co powie nam test. 
+
+```{r}
+lmtest::bptest(model)
+```
+$P$-wartość z testu Breusch-Pagan wyniosła zdecydowanie mniej niż $\alpha=0.05$, zatem możemy odrzucić hipotezę zerową o homoskedastyczności reszt.
+
+
+Załóżmy, jednak spełnienie tego załozenia.
+
+## Założenie 6: Multikolinarność zmiennych objaśniających
+
+```{r}
+vif(model)
+```
+
+Analiza współliniowości pokazuje, że wszystkie zmienne w modelu mają dość niskie wartości (mniejsze od 5), co oznacza brak problemów z multikolinearnością. Zmienne sqft_living, floors, grade oraz yr_built mają trochę wyższe wartości VIF, co sugeruje, że są nieco bardziej skorelowane z innymi zmiennymi, ale nadal nie jest to problematyczne.
+
+
+## Sprawdzenie jakosci modelu 
+
+```{r}
+summary(model)
+```
+
+Model jest statystycznie istotny, ponieważ większość współczynników jest znacząca (p-value < 0.05). Jednakże zmienna long odbiega od pozostałych, wartość p-value równe 0.574 oznacza, iż zmienna nie jest istotna. Można rozważyć jej usunięcie z modelu.
+
+```{r}
+model_summary(model, test_data, test_data$price)
+```
+
+Model regresji osiąga dobry wynik, wyjaśniając około 68% zmienności zmiennej zależnej. Skorygowane $R^2$ jest bardzo zbliżone do $R^2$ , co sugeruje, że liczba zmiennych w modelu jest dobrze dobrana i nie prowadzi do nadmiernego dopasowania. Zbliżone wartości RMSE i MAE dla zestawów treningowych i testowych sugerują, że model nie jest przeuczony. Kryterium Akaikego (AIC) sugeruje, że model można porównać z innymi wersjami modelu, aby ewentualnie poprawić dopasowanie. Obecne błędy predykcji mogą wynikać z dużej zmienności cen nieruchomości.
+
+# Modyfikacja modelu
+
+Zatem spróbujmy usunąć z naszego modelu zmienną long. Sprawdzimy, czy to poprawi dopasowanie modelu czy nic nie zmieni.
+
+```{r}
+model_m <- lm(price ~ sqft_living + bedrooms + grade + view + floors + waterfront + sqft_basement + condition + yr_built + zipcode + renovated + lat + log_lot, data = train_data)
+```
+
+# Sprawdzenie założeń modelu regresji wielorakiej
+
+## Założenie 1: Zależność liniowa między zmienną objaśnianą, a zmiennymi objaśniającymi
+
+Założenie to sprawdzaliśmy wyżej dla wszystkich naszych zmiennych.
+
+## Założenie 2: Rozkład reszt
+
+Do zbadania normalności reszt przeanalizujemy histogram oraz wykres Q-Q reszt.
+
+```{r}
+ggplot(data.frame(resid = residuals(model_m)), aes(x = resid)) + geom_histogram(bins = 30, color = "darkgreen", fill = "lightgreen") + labs(title = "Histogram reszt z modelu", x = "Reszty", y = "Częstotliwość") + theme_minimal() + theme(plot.title = element_text(hjust = 0.5, face = 'bold'))
+```
+
+
+```{r}
+ggplot(data.frame(resid = residuals(model_m)), aes(sample = resid)) + geom_qq() + geom_qq_line(color = "darkgreen") + labs(title = "Wykres kwartyl-kwartyl reszt", x = "Kwartyle teoretyczne", y = "Kwartyle próbkowe") + theme_minimal() + theme(plot.title = element_text(hjust = 0.5, face = 'bold'))
+```
+
+Wykresy pokazują, że założenie normalności reszt dla naszego modelu jest spełnione.
+
+## Założenie 3: Zerowa średnia reszt
+
+Do sprawdzenia zerowej średniej reszt użyjemy klasycznego testu t studenta.
+
+```{r}
+t.test(model_m$residuals)
+```
+
+Test potwierdza, że średnia reszt jest statystycznie równa 0, co wskazuje, że model nie ma systematycznych błędów w przewidywaniach.
+
+## Założenie 4: Niezależność reszt
+
+```{r}
+ggplot(data.frame(Pred = fitted(model_m), Resid = residuals(model_m)), aes(x = Pred, y = Resid)) + geom_point(alpha = 0.5, color = "lightgreen") + stat_smooth(method='loess', formula=y~x, se=FALSE,color="darkgreen")+ geom_hline(yintercept = 0, linetype = "dashed", color = "darkgreen") + labs(title = "Wykres zależności reszt do przewidywanych wartości", x = "Przewidywane wartości", y = "Reszty") + theme_minimal() + theme(plot.title = element_text(hjust = 0.5, face = 'bold'))
+```
+
+Sytuacja taka sama jak w powyższym modelu.
+
+Aby zbadać autokorelację reszt, zastosujemy test Durbina-Watsona, który ocenia zależności pomiędzy kolejnymi wartościami reszt.
+
+```{r, message=FALSE}
+library(lmtest)
+lmtest::dwtest(model_m)
+```
+
+Test Durbina-Watsona wykazał, że statystyka DW jest bliska 2, co sugeruje brak autokorelacji w resztach modelu. P-value równe 0.06369 wskazuje, że brak jest podstaw do odrzucenia hipotezy zerowej o niezależności reszt. 
+
+Zatem, model spełnia założenie o niezależności reszt.
+
+## Założenie 5: Homoskedastyczność
+
+```{r}
+ggplot(model_m, aes(.fitted, sqrt(abs(.stdresid)))) +  geom_point(color = "lightgreen") + stat_smooth(method = "loess", formula = y ~ x, se = FALSE, color = "darkgreen") + labs(title = "Zależność pierwiastka standaryzowanych reszt od dopasowanych wartości", x = "Dopasowane wartości", y = "Pierwiastek standaryzowanych reszt") + theme_minimal()
+```
+
+Wykres pokazuje nieliniowy wzorzec, gdzie reszty rosną przy średnich wartościach dopasowań, a następnie maleją dla większych. Taki układ może sugerować obecność heteroskedastyczności.
+
+Sprawdźmy jeszcze test Breusch-Pagana. 
+
+```{r}
+lmtest::bptest(model)
+```
+
+P-value jest równa o wiele mniej niż $\alpha=0.05$, zatem możemy odrzucić hipotezę zerową o homoskedastyczności reszt.
+
+Przyjmijmy jednak, że to założenie jest spełnione.
+
+## Założenie 6: Wielokolinearność zmiennych objaśniających
+
+```{r}
+vif(model_m)
+```
+
+Model nie wykazuje istotnego problemu współliniowości. 
+
+## Sprawdzenie jakosci modelu 
+
+```{r}
+summary(model_m)
+```
+
+Model regresji liniowej wyjaśnia około $68.4\%$ zmienności cen domów. Model jest statystycznie istotny, a wszystkie zmienne w modelu mają wartość $p < 0.05$, co oznacza ich istotność.  
+
+```{r}
+model_summary(model_m, test_data, test_data$price)
+```
+
+Oba modele wykazują bardzo podobne wyniki, z minimalnymi różnicami w poszczególnych miarach. Treningowe $R^2$ w obu przypadkach jest niemal identyczne, wynosząc odpowiednio 0.6839161 i 0.6839195. Podobnie, poprawione $R^2$ różnią się jedynie o 0.0000144, co wskazuje na niewielkie różnice w dopasowaniu modeli do danych treningowych. Wartości AIC są prawie identyczne, z różnicą wynoszącą tylko 1.7, co sugeruje, że oba modele mają podobną złożoność, z minimalnym wskazaniem na preferencję dla Modelu 2.
+RMSE dla danych treningowych różni się o jedynie 2.5, a dla danych testowych o 1.1, co świadczy o podobnej dokładności predykcji obu modeli. MAE w obu przypadkach jest również zbliżone, z różnicą wynoszącą około 28 dla danych treningowych i 27 dla testowych.
+POdobnie dla różnic miedzy RMSE I MAE treningowym i testowym. Zauważalna jest bardzo niewielka różnica. 
+
+Oba modele dają bardzo zbliżone wyniki, co wskazuje, że mają podobną skuteczność w przewidywaniu, co sugeruje, że usunięcie zmiennej long faktycznie nie wpływa na zdolność modelu do przewidywania cen domów.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

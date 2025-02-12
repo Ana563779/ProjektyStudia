@@ -1,0 +1,1188 @@
+---
+title: "Regresja i analiza wariancji - Sprawozdanie 1"
+subtitle: 'Regresja liniowa - sprawozdanie' 
+author: 
+  name: 'Karolina Boron, Anna Grych'
+  affiliation: 'Politechnika Krakowska'
+output: 
+  html_document:
+    theme: readable
+    toc: true
+    toc_float: true
+    df_print: paged
+---
+
+
+# Zadanie 1
+
+Zaimportuj zbiór danych Carseats z biblioteki ISLR i dokładnie opisz dane w nim zawarte.
+
+Zbadaj (graficznie oraz za pomocą statystyk opisowych) zależności między dostępnymi zmiennymi objaśniającymi,
+a zmienną Sales.
+
+Dopasuj modele regresji liniowej prostej przewidujące wartość zmiennej Sales za pomocą każdej z dostępnych zmiennych. 
+
+Opisz dokładnie każdy z modeli pod względem spełnienia założeń regresji liniowej prostej, interpretacji
+oraz jakości modelu.
+
+Podsmuj pracę, opisując, który z modeli najlepiej (w jakim sensie?) wyjaśnia cenę fotelików, a który
+najgorzej.
+
+*UWAGA: Głównymi składnikami oceny, w kolejności malejącej są: poprawność merytoryczna komentarzy, estetyka i kompletność grafik i tekstu, poprawna interpretacja używanego kodu, czytelność kodu, wyrafinowanie kodu.* 
+
+# Import i opis danych
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+library(tidyverse)
+library(ISLR)
+library(lmtest)
+library(caret)
+```
+
+```{r,warning=FALSE}
+carseats <- tibble::as.tibble(ISLR::Carseats)
+head(carseats)
+```
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+?ISLR::Carseats
+```
+
+```{r}
+str(carseats)
+```
+
+
+Zbiór Carseats z biblioteki ISLR zawiera dane o sprzedaży fotelików samochodowych w 400 różnych sklepach. 
+
+Składa sie on z 400 obserwacji(wierszy)  i 11 zmiennych (kolumn).
+
+Opis zmiennych z tego zbioru:  
+
+1. Sales - liczba sprzedanych fotelików samochodowych (w tysiącach) w danym sklepie. 
+
+2. CompPrice - cena fotelika w konkurencyjnym sklepie (w dolarach).
+
+3. Income - średni dochód w regionie sklepu (w tysiącach dolarów). 
+
+4. Advertising - budżet na reklamę w sklepie (w tysiącach dolarów). 
+
+5. Population - liczba mieszkańców w regionie sklepu (w tysiącach). 
+
+6. Price - cena fotelika w danym sklepie (w dolarach). 
+
+7. ShelveLoc - jakość lokalizacj regału w sklepie (Bad, Medium, Good).
+
+8. Age - średni wiek klientów w regionie sklepu. 
+
+9. Education - średni poziom edukacji w danej lokalizacji.
+
+10. Urban - informacja, czy sklep znajduje się w obszarze miejskim (Yes, No).
+ 
+11. US - informacja, czy sklep znajduje się w USA (Yes, No).
+
+Zbiór danych Carseats zawiera zarówno zmienne numerycze, jak i kategoryczne.
+
+Zmiennymi numerycznymi są: Sales, CompPrice, Income, Advertising, Population, Price, Age, Education.
+
+Zmiennymi kategorycznymi są: ShelveLoc, Urban, US.
+
+Zmienna Sales jest zmienną zależną od pozostałych, tzw.zmiennych objaśniających. Analiza zależności między Sales, a pozostałymi zmiennymi pozwoli nam określić, które czynniki mają największy wpływ na wielkość sprzedaży oraz jak różne interakcje między predyktorami mogą wpływać na jej zmienność.
+
+# Badanie zależności między zmiennymi
+
+Przejdźmy do zbadania zależności między dostępnymi zmiennymi objaśniającymi, a zmienną Sales.
+
+## Badanie statystyk opisowych
+
+Najpierw zajmijmy się opisaniem statystyk opisowych wszystkich zmiennych.
+
+```{r}
+summary(Carseats)
+```
+
+### Sales
+
+Wartość sprzedaży waha się pomiędzy 0, a 16270, więc możemy zaobserwować szeroką rozpiętość wyników, co wskazuje na dużą zmienność w sprzedaży między różnymi obserwacjami. Mediana i średnia są bardzo zbliżone do siebie, prawie identyczne, świadczy to o tym, że rozkład sprzedaży jest symetryczny. Wartości kwartylowe pokazują, że większość danych mieści się w przedziale od około 5,39 do 9,32.
+Najwyższa sprzedaż może oznaczać sklepy w wyjątkowo sprzyjających warunkach, np. dobra lokalizacja, duża populacja. Zerowa sprzedaż może wskazywać na słabą lokalizację, bardzo małą populację, wysoką cenę. Sprzedaż produktów w większości sklepów jest skoncentrowana wokół mediany 7496, co oznacza umiarkowaną sprzedaż w typowym sklepie.
+
+### CompPrice
+
+Cena konkurencyjna waha pomiędzy 77, a 175. Rozpiętość wynosi 98 (175 - 77), co wskazuje na znaczne zróżnicowanie cen między konkurentami. Najdroższe produkty konkurencji kosztują ponad dwa razy więcej niż najtańsze. Mediana i średnia są sobie równe czyli rozkład jest symetryczny. Zauważmy, że kwartyle 1 i 3 odstają o tyle samo od mediany, co to też świadczy o tym, że rozkład jest symetryczny. Wartości kwartylowe pokazują, że większość cen konkurencji mieści się w stosunkowo wąskim przedziale od 115 do 135. Obserwacje poza kwartylami (poniżej 115 i powyżej 135) mogą dotyczyć szczególnych przypadków cenowych, takich jak promocje lub luksusowe produkty.Zmienna CompPrice dostarcza użytecznych informacji o poziomie cen u konkurencji, co może być przydatne przy badaniu zależności między ceną konkurencji, a sprzedażą.
+
+### Income
+
+Można zauważyć, że wartości mieszczą się w szerokim zakresie od 21000 do 120000, co oznacza rozpiętość wynoszącą 99000. Świadczy to o znacznym zróżnicowaniu dochodów, co może wynikać z różnorodności demograficznej lub ekonomicznej. Środkowa wartość dochodu jest bardzo bliska średniej, co sugeruje, że rozkład dochodu jest symetryczny lub lekko skośny. Pierwszy kwartyl oznacza, że 25% populacji ma dochód niższy niż 42750, a trzeci kwartyl pokazuje, że 75% populacji ma dochód niższy niż 91000. Duża rozpiętość dochodów wskazuje, że badana populacja jest różnorodna, co wskazuje na zróżnicowanie zamożności. Dochód jest ważnym wskaźnikiem ekonomicznym, który może oddziaływać na decyzje zakupowe, np. na wysokość przeznaczonego budżetu na wydatki zakupowe, preferencje cenowe.
+
+### Advertising 
+
+Nakład na reklamę waha się pomiędzy 0, a 29000 co wskazuje na dużą różnorodność w strategiach reklamowych. Minimalna wartość wskazuje, że w niektórych przypadkach nie poniesiono żadnych wydatków na reklamę. Pierwszy kwartyl także jest równy 0, co sugeruje, że przynajmniej 25% sklepów w danych w ogóle nie inwestuje w reklamę. Niska mediana w porównaniu do maksymalnej wartości wskazuje, że większość budżetu przeznaczanego na reklamę to stosunkowo niewielkie kwoty. Wydatki powyżej 12000 znajdują się w górnym kwartylu i mogą dotyczyć firm lub osób o większym budżecie promocyjnym. Sklepy inwestujące znacznie więcej w reklamę mogą należeć do dużych sieci handlowych lub obszarów, gdzie konkurencja jest intensywna. Natomiast obecność grupy nieinwestującej może wynikać z niszowego rynku, czy ograniczeń finansowych. Brak reklamy firmy może skutkować mniejszą rozpoznawalnością marki, ograniczoną liczbą klientów i spadkiem sprzedaży.
+
+### Population
+
+Dane obejmują zarówno bardzo małe obszary o populacji 10000, jak i większe, do 509000. Świadczy to o zróżnicowaniu  lokalizacji sklepów na terenach bardziej lub mniej zaludnionych. Rozkład populacji jest stosunkowo symetryczny, co sugeruje, że większość danych znajduje się blisko wartości centralnych. Dane pokazują, że większość populacji mieści się w zakresie od 139000 do 399000, co sugeruje umiarkowaną koncentrację danych w tym przedziale. Małe populacje mogą mieć bardziej ograniczony rynek, podczas gdy większe obszary oferują większy potencjał sprzedaży, co sprawia, że zmienna Population pozwala ocenić, czy wielkość populacji wokół sklepu wpływa na poziom sprzedaży. Na liczebność populacji w badanych obszarach może mieć wpływ ukształtowanie terenu, które ma znaczenie dla gęstości zaludnienia oraz dostępności przestrzeni do zamieszkania.
+
+### Price
+
+Najniższa cena w analizowanych przypadkach to 24, a największa to 191, więc istnieje całkiem duża rozpiętość cen. Mediana jest bardzo bliska średniej, co sugeruje symetryczny rozkład cen. Większość danych o cenach mieści się w przedziale od 100 do 131, co wskazuje na koncentrację cen w średnim zakresie. Zróżnicowanie cen może wynikać z różnych typów produktów, ich jakości, docelowej grupy odbiorców, kosztów produkcji, a także dostępności na rynku. Zmienna Price pokazuje, że analizowany rynek jest zróżnicowany pod względem cen z dominującym segmentem produktów o cenach średnich. 
+
+### ShelveLoc
+
+Najczęściej występuje lokalizacja Medium, co sugeruje, że większość produktów ma umiarkowaną jakość ekspozycji. Różnica między liczbą produktów w kategorii Bad i Good może wskazywać na różne strategie umieszczania towarów, gdzie produkty mniej popularne lub tańsze mają gorszą ekspozycję, a produkty premium są umieszczane w bardziej widocznych miejscach. Produkty z złą lokalizacją mogą być mniej widoczne lub trudno dostępne dla klientów. Produkty średnio zlokalizowane mają przeciętną widoczność i dostępność. Natomiast produkty w dobrej lokalizacji są najlepiej eksponowane, co zwiększa ich widoczność. Zatem zmienna ShelveLoc jest kluczowa, ponieważ lokalizacja na półce może mieć wpływ na wybór klienta podczas zakupów. 
+
+### Age
+
+Zakres wieku waha się pomiędzy 25 lat, a 80 lat, czyli istnieje duża różnorodność demograficzna. Mediana jest bardzo zbliżona do średniej, co wskazuje na symetryczny rozkład danych. Większość badanych obszarów ma średni wiek mieszkańców w zakresie 40-66 lat, co wskazuje na dominację populacji w wieku średnim i starszym. Zmienna Age wskazuje, że główni nabywcy fotelików samochodowych to osoby w średnim wieku, ponieważ średnia i mediana wieku wynoszą około 54 lat, co sugeruje, że mogą to być głównie rodzice dzieci w wieku, które wymagają używania fotelików samochodowych. Zwróćmy jednak uwagę, że rozkład wieku jest dość szeroki, obejmując także osoby starsze, takie jak dziadkowie, którzy mogą kupować foteliki dla swoich wnuków.
+
+### Education
+
+Poziom wykształcenia zawiera się w przedziale od 10 lat do 18 lat. Oznacza to, że w próbie są osoby które posiadają wykształcenie podstawowe, średnie lub wyższe. Średnia i mediana sugerują, że większość osób w próbie ma wykształcenie średnie lub częściowe wykształcenie wyższe. Oznacza to, że mamy do czynienia głównie z grupą średnio wykształconych. Mediana i średnia są bardzo bliskie, co sugeruje, że rozkład jest symetryczny. 1. kwartyl i 3. kwartyl wskazują, że połowa próby ma wykształcenie pomiędzy ukończoną szkołą średnią (12 lat) a ukończonym wykształceniem wyższym (16 lat). Osoby z wyższym wykształceniem mogą być bardziej świadome regulacji dotyczących bezpieczeństwa dzieci, co mogłoby zwiększać sprzedaż fotelików samochodowych w takich sklepach lub regionach. Natomiast osoby, które nie posiadają wyższego wykształcenia średnio posiadają więcej dzieci, niż osoby których edukacja trwała dłużej.
+
+### Urban
+
+Większość sklepów (282) znajduje się w miastach, co sugeruje, że sprzedaż fotelików samochodowych koncentruje się na obszarach miejskich. Może to wynikać z większej liczby ludności oraz wyższej świadomości przepisów dotyczących bezpieczeństwa dzieci. Sklepy na wsiach mają mniejszy udział (118), co może być spowodowane niższą gęstością zaludnienia i ograniczoną dostępnością sklepów. Dla miast warto rozwijać marketing i sieć sklepów, natomiast na wsiach stosować ukierunkowane strategie, jak sprzedaż online czy kampanie edukacyjne. Duża koncentracja w miastach może wskazywać na kluczową rolę urbanizacji w rynku fotelików samochodowych.
+
+### US
+
+Większość sklepów (258) działa w Stanach Zjednoczonych, co sugeruje, że rynek amerykański odgrywa kluczową rolę w sprzedaży.
+Może to wynikać z większego zapotrzebowania w USA, np. związanego z obowiązującymi przepisami bezpieczeństwa, większą liczbą rodzin korzystających z samochodów oraz wyższym poziomem świadomości konsumentów. W USA warto koncentrować się na utrzymaniu silnej pozycji rynkowej poprzez lokalny marketing i rozwój sieci dystrybucji. Mimo dominacji USA, aż 142 sklepy działają poza Stanami Zjednoczonymi, co wskazuje na znaczący udział międzynarodowy. Może to obejmować rynki o rosnącym zapotrzebowaniu na foteliki samochodowe. Na rynkach poza USA może być konieczne zastosowanie bardziej dostosowanych strategii, uwzględniających lokalne przepisy i preferencje konsumentów.
+
+## Badanie graficzne zależności pomiędzy zmienną Sales, a zmiennymi kategorialnymi
+
+### ShelveLoc
+```{r}
+ggplot(Carseats, aes(x = ShelveLoc, y = Sales, fill = ShelveLoc)) + geom_boxplot() + labs(title = "Sprzedaż w zależności od jakości ekspozycji ",x="Jakość ekspozycji",y = "Sprzedaż") + theme_minimal() + theme(plot.title = element_text(hjust = 0.5))
+```
+
+Wykresy boxplot przedstawiają zależność między jakością ekspozycji fotelików samochodowych ,a poziomem sprzedaży. Sklepy z dobrą ekspozycją osiągają najwyższe wyniki sprzedaży, z medianą na poziomie około 10. W przypadku średniej jakości ekspozycji sprzedaż jest niższa, z medianą wynoszącą około 8, ale nadal wyższa niż w przypadku złej ekspozycji. Zła ekspozycja wiąże się z najniższymi wynikami sprzedaży, gdzie mediana wynosi około 5. Wyniki wykresu pokazują, że jakość ekspozycji fotelików samochodowych na półkach ma istotny wpływ na poziom sprzedaży. Sklepy z lepszą ekspozycją osiągają wyższe wyniki sprzedaży, co wskazuje na znaczenie odpowiedniego ustawienia produktów w sklepie.
+
+### Urban
+```{r}
+ggplot(Carseats, aes(x = Urban, y = Sales, fill = Urban)) + geom_boxplot() +labs(title = "Sprzedaż w zależności od urbanizacji",x="Obszar miejski",y = "Sprzedaż") + theme_minimal() + theme(plot.title = element_text(hjust = 0.5))
+```
+
+Wykresy boxplot dla zmiennej Urban wskazują, że mimo dominacji sklepów w obszarach miejskich, wyniki sprzedaży fotelików samochodowych są stosunkowo wyrównane. Różnice w rozrzucie danych mogą sugerować, że w miastach występuje większa zmienność w sprzedaży (więcej wartości odstających). Mediana pokazuje, że sklepy na terenach miejskich i wiejskich osiągają zbliżone wyniki sprzedaży. Choć w miastach jest więcej sklepów, różnice w wynikach sprzedaży między obszarami miejskimi, a wiejskimi nie są znaczące, co sugeruje, że inne czynniki mogą mieć większy wpływ na wyniki niż sama urbanizacja.
+
+### US
+
+```{r}
+ggplot(Carseats, aes(x = US, y = Sales, fill = US)) + geom_boxplot() +labs(title = "Sprzedaż w zależności od lokalizacji ",x="USA",y = "Sprzedaż") +theme_minimal()+theme(plot.title = element_text(hjust = 0.5))
+```
+
+Wykresy boxplot pokazują wyraźną różnicę w sprzedaży fotelików samochodowych między sklepami zlokalizowanymi w USA i poza USA. Sklepy w Stanach Zjednoczonych osiągają wyższe wyniki sprzedaży, z medianą wynoszącą około 8, podczas gdy sklepy poza USA mają medianę na poziomie około 6. Na lewym wykresie możemy zauważyć wartości odstające, ale są one mniejsze niż maksymalna wartość na prawym wykresie. Sklepy w USA mają także szerszy rozrzut sprzedaży, co sugeruje większą zmienność wyników. Natomiast sprzedaż poza USA jest bardziej stabilna, ale na niższym poziomie. Zatem wykresy pokazują, że rynek amerykański generuje wyższy popyt na foteliki samochodowe.
+
+## Badanie graficzne zależności pomiędzy zmienną Sales, a zmiennymi numerycznych
+
+### CompPrice
+
+```{r}
+ggplot(carseats, aes(x = CompPrice, y = Sales)) + geom_point(color = "magenta") +labs(title = "Wykres punktowy zależności sprzedaży od ceny konkurencyjnej", x = "Cena konkurencyjnego produktu", y = "Sprzedaż (tys.)")
+``` 
+
+Wykres punktowy przedstawia zależność między ceną konkurencyjnego produktu a sprzedażą produktu. Rozkład punktów jest rozproszony. Na wykresie można zauważyć kilka punktów, które mogą być uznane za wartości odstające, ponieważ wyraźnie odbiegają od ogólnego rozkładu danych. Sprzedaż produktu pozostaje zróżnicowana w szerokim zakresie cen konkurencyjnych produktu, zwłaszcza w przedziale 100-125 jednostek. Nie widać wyraźnej tendencji wzrostowej ani spadkowej w sprzedaży w zależności od ceny konkurencji, co może wskazywać na wpływ innych czynników na sprzedaż.
+
+### Income 
+
+```{r}
+ggplot(carseats, aes(x = Income, y = Sales)) + geom_point( color = "cornflowerblue") +labs(title = "Wykres punktowy zależności sprzedaży od średniego dochodu w rejonie", x = "Średni dochód w rejonie", y = "Sprzedaż (tys.)")
+```
+
+Wykres punktowy przedstawia zależność między średnim dochodem w regionie, a sprzedażą produktu. W wyższych dochodach (powyżej 75 jednostek) dane są bardziej rozproszone. Pojawiają się także wartości odstające, np. bardzo wysokie poziomy sprzedaży (powyżej 15 tysięcy) lub zerowa sprzedaż przy przeciętnych i niskich dochodach. Wyniki wskazują na bardzo małą zależność między średnim dochodem w regionie, a sprzedażą. 
+
+### Advertising
+
+
+```{r}
+ggplot(carseats, aes(x=Advertising, y=Sales)) + geom_point(color = "darkblue") + labs(title="Wykres punktowy zależności sprzedaży od budżetu na reklamę",x = "Budżet na reklamę", y = "Sprzedaż (tys.)") 
+```
+
+Wykres przedstawia zależność między budżetem przeznaczonym na reklamę (w tysiącach dolarów), a sprzedażą produktu (w tysiącach). Większość firm przeznacza niewielkie budżety na reklamę (0–10 tys.), a sprzedaż w tym zakresie jest zróżnicowana, osiągając zarówno niskie, jak i wysokie wartości. Przy wyższych budżetach (10–30 tys.) punkty są bardziej rozproszone, ale nie wykazują wyraźnego trendu wzrostowego sprzedaży. Wartości odstające, takie jak wysoka sprzedaż przy niskim lub zerowym budżecie, sugerują istnienie innych czynników.
+
+### Population
+
+
+```{r}
+ggplot(carseats, aes(x=Population, y=Sales)) + geom_point(color="aquamarine3") + labs(title = "Wykres punktowy zależności sprzedaży od liczby ludności", x = "Liczba ludności (tyś.)", y = "Sprzedaż (tys.)") 
+```
+
+
+Wykres przedstawia zależność między liczbą ludności (w tysiącach) w danym regionie, a sprzedażą produktu (w tysiącach). Dane są równomiernie rozproszone wzdłuż osi liczby ludności, od małych wartości (0–100 tys.) do dużych (500 tys.). Sprzedaż w większości przypadków utrzymuje się w przedziale 5–10 tysięcy, niezależnie od liczby ludności. Brak wyraźnej zależności między liczbą ludności, a sprzedażą sugeruje, że liczba ludności sama w sobie nie jest kluczowym czynnikiem wpływającym na sprzedaż.
+
+### Price
+```{r}
+ggplot(carseats, aes(x=Price, y=Sales)) + geom_point(color="plum4") + labs(title = "Wykres punktowy zależności sprzedaży od ceny", x = "Cena", y = "Sprzedaż (tys.)") 
+```
+
+Wykres punktowy przedstawia zależność między ceną produktu, a jego sprzedażą (w tysiącach). Można zauważyć, że wraz ze wzrostem ceny sprzedaż ma tendencję do spadku, co jest intuicyjne, ponieważ wyższe ceny mogą odstraszać klientów. Większość punktów znajduje się w przedziale cenowym 75–125, gdzie sprzedaż oscyluje między 5 a 10 tys. Ekstremalne wartości cen, zarówno niskie, jak i wysokie, wskazują na wyjątkowe przypadki, takie jak promocje lub marki premium. Generalnie cena ma wpływ na sprzedaż, ale nie jest to jedyny czynnik.
+
+### Age
+```{r}
+ggplot(carseats, aes(x=Age, y=Sales)) + geom_point(color="darkgreen") + labs(title = "Wykres punktowy zależności sprzedaży od średniego wieku lokalnej populacji", x = "Wiek", y = "Sprzedaż (tys.)") 
+```
+
+Wykres przedstawia zależność między średnim wiekiem lokalnej populacji, a sprzedażą (w tysiącach). Sprzedaż nie rośnie ani nie maleje wraz z wiekiem populacji. Sprzedaż osiąga zarówno niskie, jak i wysokie wartości w szerokim zakresie wiekowym. Widoczne są punkty, w których sprzedaż jest bardzo wysoka (powyżej 15 tysięcy) lub niska (blisko 0). Brak szczególnego wzoru sugeruje, że średni wiek populacji nie jest dominującym czynnikiem wpływającym na wyniki sprzedażowe.
+
+### Education
+
+```{r}
+ggplot(carseats, aes(x=Education, y=Sales)) + geom_point(color="salmon") + labs(title = "Wykres punktowy zależnosci sprzedaży od średniego poziomu edukacji", x = "Poziom wykształcenia", y = "Sprzedaż (tys.)") 
+```
+
+Wykres punktowy przedstawia zależność pomiędzy poziomem wykształcenia, a sprzedażą (w tysiącach). Dane są rozproszone, z podobnym zakresem wartości dla wszystkich poziomów wykształcenia. Dla większości poziomów wykształcenia sprzedaż waha się między 0 a 15 tys., co oznacza, że zmienność sprzedaży jest podobna dla każdego z poziomów. Mogą występować pewne odstające punkty, które reprezentują wyjątkowo wysoką lub niską sprzedaż dla określonego poziomu wykształcenia.
+
+
+# Klasyczne założenia modelu regresji
+
+Przed przystąpieniem do opracowywania modeli omówmy najpierw założenia modelu regresji, które będziemy w dalszej części sprawdzać i interpretować.
+
+Poprawność modelu zależy od spełnienia poniższych założeń: 
+
+1. Między zmienną zależną (egzogeniczną), a niezależną (endogeniczną) istnieje zależność liniowa opisana równaniem $y_i = \beta_0 + \beta_1 x_i + \varepsilon_i$.
+2. Reszty modelu, czyli zmienne losowe $\varepsilon_i$ spełniają następującą listę założeń:
+- Dla dowolnego $i$ zmienna $\varepsilon_i$ ma rozkład normalny (normalność reszt)
+- Dla dowolnego $i$ zmienna $\varepsilon_i$ ma średnią $0$;
+- Dla każdego $i$ zmienna $\varepsilon_i$ ma tą samą, stałą wariancję $\sigma^2$ (homoskedastyczność);
+- Dla dowolnego $i,j$, jeżeli tylko $i \neq j$ to $\varepsilon_i$ i $\varepsilon_j$ są niezależne (niezależność reszt);
+
+W każdym przykładzie przyjmijmy poziom istotności równy $\alpha = 0.05$.
+
+# Dopasowanie modeli, interpretacja i sprawdzenie ich jakości
+
+Ze względu na to, iż zależy nam na ocenie jakości modelów oraz porównanie ich między sobą, skorzystamy z podziału zbioru na dane treningowe i testowe w skali 3:1, czyli przeznaczamy 75% danych na zbiór treningowy.  
+
+```{r}
+set.seed(123)
+partition <- caret::createDataPartition(carseats$Sales,list = FALSE,p=0.75)
+carseats_train <- carseats[partition,]
+carseats_test <- carseats[-partition,]
+```
+Sprawdzimy i zweryfikujemy założenia wyłacznie na zbiorze treningowym, a następnie ocenimy jakość przewidywań na zbiorze danych, których nasz model jeszcze nie widział.
+
+Przejdziemy teraz do dopasowania modeli regresji liniowej prostej przewidujące wartość zmiennej Sales za pomocą każdej z 10 dostępnych zmiennych.
+
+Zaznaczmy jednak, iż my omówimy tylko 7 zmiennych ze względu na to, iż trzy z dziesięciu zmiennych są zmiennymi kategorialnymi. My nie potrafimy jeszcze zajmować się nimi w temacie regresji liniowej, dopasujemy zatem modele tylko do zmiennych ciągłych, pomijając kategorialne. Trzeba jednak pamietać, iż te zmienne które opuszczamy także mogą mieć wiekszy bądź mniejszy wpływ na sprzedaż. 
+
+
+## Model pomiędzy zmienną Sales, a zmienną CompPrice. 
+
+### Model
+
+Zaczynamy od dopasowania modelu między zmienną Sales a zmienną CompPrice. 
+
+```{r}
+model_CompPrice <- lm(Sales ~ CompPrice, data=carseats_train)
+```
+
+### Założenie 1: Zależność liniowa
+
+Najpierw musimy zweryfikować, czy istnieje zależność liniowa pomiędzy zmienną zależną, a zmienną niezależną.
+Do tego wykorzystamy wykres punktowy oraz współczynnik korelacji Pearsona. 
+
+```{r}
+cor.test(carseats_train$CompPrice, carseats_train$Sales)
+```
+Współczynnik korelacji wynoszący 0.103777 wskazuje nam na bardzo słabą dodatnią korelację między zmiennymi. P-value > 0.05 oznacza, że nie ma wystarczających dowodów na istotność tej zależności. W takiej sytuacji pozostajemy przy hipotezie zerowej, która zakłada brak takiego związku. Przedział ufności obejmujący 0 sugeruje także brak silnej liniowej zależności między zmiennymi.
+Wyniki sugerują, że cena konkurencyjnego produktu (CompPrice) ma minimalny i statystycznie nieistotny wpływ na sprzedaż fotelików (Sales).
+
+```{r}
+ggplot(carseats_train, aes(x=CompPrice, y=Sales)) + geom_point() + labs(title = "Zależność sprzedaży od ceny konkurencyjnej", x = "Cena konkurencyjnego produktu", y = "Sprzedaż (tys.)") + geom_smooth(method='lm' ,formula=y~x, se=FALSE)
+```
+
+Punkty na wykresie pokazują, że nie ma wyraźnej zależności między sprzedażą, a ceną konkurencyjnego produktu. Punkty są rozproszone w centum oraz niebieska linia regresji, przedstawiająca szacowaną liniową zależność między zmiennymi, jest niemal pozioma, co wskazuje na słabą liniową korelację i minimalny wpływ ceny konkurencyjnego produktu na sprzedaż, potwierdzając tym samym otrzymany współczynnik Pearsona.
+
+### Założenie 2: Rozkład reszt
+
+Do zbadania normalności reszt przeanalizujemy histogram oraz wykres Q-Q reszt.
+
+
+```{r}
+ggplot(model_CompPrice, aes(x = .resid)) + geom_histogram(aes(y = after_stat(density)), bins = 30, fill = "pink", color = "black") + stat_function(fun = dnorm, args = list(mean = mean(residuals(model_CompPrice)), sd = sd(residuals(model_CompPrice))), color = "red", size = 1, aes(linetype = "Gęstość rozkładu normalnego")) + labs(title = "Histogram reszt z modelu ",x = "Reszty",y = "Częstotliwość",linetype = "Legenda" ) +theme_minimal() + theme(plot.title = element_text(size = 15, hjust = 0.5))
+```
+
+
+```{r}
+ggplot(model_CompPrice, aes(sample=.resid)) + geom_qq() + geom_qq_line(color = "darkgreen") + labs(title='Wykres kwartyl-kwartyl reszt', x='Kwartyle teoretyczne', y='Kwartyle próbkowe')
+```
+
+Po analizie przedstawionych powyżej histogramu i wykresu Q-Q reszt można stwierdzić, że nasze założenie o normalności rozkładu jest spełnione. Zauważmy, że histogram reszt dość dobrze odpowiada dopasowanej gęstości rozkładu normalnego, choć możemy zauważyć pewne obserwacje odstające w centrum i na ogonach. Rozkład reszt wydaje się być w miarę symetryczny wokół zera. Także na wykresie Q-Q reszt widzimy, że dane z rozkładu, w centum, leżą wzdłuż lini, ale można zauważyć wartości odstające na ogonach. Nie są one jednak na tyle duże, aby wpłynąć na ogólną zgodność reszt z rozkładem normalnym.
+
+
+### Założenie 3: Zerowa średnia reszt
+Do sprawdzenia zerowej średniej reszt używamy klasycznego testu t studenta.
+
+```{r}
+t.test(model_CompPrice$residuals)
+```
+P-value jest znacznie większa niż założony poziom istotności $\alpha = 0.05$, dlatego nie możemy odrzucić hipotezy zerowej oraz średnia reszt wynosi $1.019611e-16$. W praktyce oznacza to, że średnia reszt w tej próbce jest równa zero. Przedział ufności dla średniej reszt mieści się w zakresie $[−0.3174,0.3174]$, obejmując wartość $0$, co dodatkowo wspiera nasze założenie.
+
+
+Warto jednak jeszcze zwrócić uwagę na wykres zależności reszt do dopasowanych wartości. 
+Przydaje się on nie tylko do określenia czy średnia jest zerowa, ale także do weryfikacji niezależności reszt.
+
+```{r}
+ggplot(model_CompPrice, aes(.fitted, .resid)) + geom_point() + stat_smooth(method='loess', formula=y~x, se=FALSE) + geom_hline(yintercept=0, linetype='dashed', color='red') + labs(title='Wykres zależności reszt do dopasowanych wartości', x='Dopasowane wartości', y='Reszty')
+```
+
+Możemy zauważyć delikatne odchylenia na początku i końcu przedziału wykresu, jednak dla środkowych wartości linia jest położona bardzo blisko $y=0$, co sugeruje brak systematycznych błędów.
+Wykres potwierdza wynik testu t: średnia jest równa $0$.
+
+### Założenie 4: Niezależność reszt
+Z powyższego wykresu zauważamy także brak widocznej zależności reszt o dopasowanych wartości, rozkład reszt jest w większości losowy.  Dla pewności użyjemy jeszcze test Durbina Watsona. 
+
+```{r, message=FALSE}
+library(lmtest)
+lmtest::dwtest(model_CompPrice)
+```
+W naszym przypadku p-value jest większa od $\alpha=0.05$ więc nie mamy dowodów, aby odrzucić hipotezę o niezależności w resztach, co popierałby powyższy wykres. Wartość DW jest bliska $2$, co oznacza, że nie ma istotnej autokorelacji w resztach. Jest to dobry wynik, ponieważ sugeruje, że reszty są niezależne.
+
+Na podstawie wyniku DW i wysokiego p-value ($0.6889$), można stwierdzić, że reszty nie wykazują istotnej autokorelacji, a więc model regresji jest poprawny pod względem założenia o niezależności reszt,co popierałby powyższy wykres.  
+
+### Założenie 5: Homoskedastyczność
+
+W diagnozowaniu homoskedastyczności przyda nam się wykres zależności pierwiastka ze standaryzowanych reszt od dopasowanych wartości. 
+
+```{r}
+ggplot(model_CompPrice, aes(.fitted, sqrt(abs(.stdresid)))) + geom_point() + stat_smooth(method='loess', formula=y~x, se=FALSE) + labs(title='Zależność pierwiastka standaryzowanych reszt od dopasowanych wartości', x='Dopasowane wartości', y='Pierwiastek standaryzowanych reszt')
+```
+
+Przez skrajne wartości na wykresie założenie homoskedastycznosci może być naruszone, więc dla pewności przeprowadzimy test Breusch-Pagan.
+
+```{r}
+lmtest::bptest(model_CompPrice)
+```
+$P-value$ z testu Breusch-Pagan wyniosła więcej niż $\alpha=0.05$, zatem nie możemy odrzucić hipotezy zerowej o homoskedastyczności reszt. Możemy wnioskować, że założenie homoskedastyczności jest prawdziwe dla tego modelu, co oznacza, że wariancja terminów błędu jest stała w obserwacjach.
+
+Prawie wszystkie założenia dla tego modelu zostały spełnione. Jednak ze względu na brak podstaw do odrzucenia hipotezy zerowej odnośnie braku liniowości między zmiennymi(a więc niepewność tego założenia) musimy mieć swiadomość, iż mogą się pojawić pewne problemy w modelu. 
+
+### Sprawdzenie jakosci modelu 
+
+Aby ocenić, czy wytrenowany model spełnia oczekiwania i proces uczenia maszynowego można uznać za zakończony, konieczne jest użycie odpowiedniej miary sukcesu. Do oceny tego, jak model radzi sobie z przewidywaniem wartości ze zbioru testowego użyjemy *MAE*( Mean Absolute Error) i *RMSE*(Root Mean Sqare Error).
+Symulujemy teraz sytuację, w której otrzymujemy dane, których nasz model jeszcze nie widział.
+
+```{r}
+summary(model_CompPrice)
+```
+```{r}
+test_prediction_1<-predict(model_CompPrice,newdata=carseats_test)
+train_prediction_1 <- predict(model_CompPrice,newdata=carseats_train)
+```
+
+
+Dla ułatwienia zaimplementujemy sobie odpowiednie funkcje miar oceny modelu, z których będziemy korzystać.
+
+```{r}
+RMSE <- function(y_actual, y_predicted){
+  return(sqrt(mean((y_actual-y_predicted)^2)))
+}
+MAE <- function(y_actual, y_predicted) {
+  mean(abs(y_actual - y_predicted))
+}
+
+```
+}
+```{r}
+RMSE_test_1<-RMSE(carseats_test$Sales,test_prediction_1)
+RMSE_train_1<-RMSE(carseats_train$Sales,train_prediction_1)
+cat("RMSE_test_1:",RMSE_test_1,"\n")
+cat("RMSE_train_1:", RMSE_train_1)
+```
+
+```{r}
+MAE_test_1<-MAE(carseats_test$Sales,test_prediction_1)
+MAE_train_1<-MAE(carseats_train$Sales,train_prediction_1)
+cat("MAE_test_1:",MAE_test_1,"\n")
+cat("MAE_train_1:", MAE_train_1)
+```
+
+
+Wartość $p-value = 0.0722$ sugeruje, że zmiana ceny konkurencji nie ma istotnego wpływu na sprzedaż na poziomie istotności $\alpha = 0.05$.
+Zauważamy lekkie różnice w wartościach RMSE i MAE pomiędzy zbiorami treningowym i testowym. Model jest niestety lepiej dopasowany do danych treningowych, co jest zjawiskiem naturalnym, ale niestety nie spełnia naszych oczekiwań. Warto również zauważyć, że RMSE jest większe od MAE, co sugeruje obecność ewentualnych większych wartości odstających w danych.
+
+Zatem mamy brak istotnego wpływu CompPrice na Sales, zauważamy słabe dopasowanie modelu oraz tego,że jest potrzeba rozważenia innych zmiennych.
+Podsumowując, model jest statystycznie słaby i nie pozwala na istotne wnioskowanie o wpływie ceny konkurencji na sprzedaż.
+
+## Model pomiędzy zmienną Sales, a zmienną Income. 
+Zaczynamy od dopasowania modelu między zmienną Sales a zmienną Income. 
+
+```{r}
+model_Income <- lm(Sales ~ Income, data=carseats_train)
+```
+
+### Założenie 1: Zależność liniowa
+
+Badamy zależność liniową między zmienną Income a Sales. Robimy to tak jak wcześniej za pomocą wykresu punktowego oraz współczynnika korelacji Pearsona.
+
+
+
+```{r}
+ggplot(carseats_train, aes(x=Income, y=Sales)) + geom_point() +
+ labs(title="Wykres punktowy zależnosci od średniego dochodu w rejonie a sprzedażą", x = "Średni dochód w rejonie", y = "Sprzedaż (tyś)") + geom_smooth(method='lm' ,formula=y~x, se=FALSE)
+```
+
+Na pierwszy rzut oka ciężko określić wyraźną liniowość pomiędzy zmiennymi, jednak po przyjrzeniu się, można zauważyć pochylenie linii wokół której punkty są równomiernie rozrzucone. Możemy więc przypuszczać, iż założenie o liniowości może być spełnione. Do pomocy dalszego sprawdzenia posłuży nam wspólczynnik korelacji Pearsona.  
+
+```{r}
+cor.test(carseats_train$Income, carseats_train$Sales)
+```
+Współczynnik korelacji wynoszący $0.1568117$ wskazuje nam na słabą dodatnią korelacje miedzy zmiennymi. Jednak wartosć p-value wskazuje, iż mimo to korelacja jest statystycznie istotna.  
+
+### Założenie 2: Rozkład reszt
+
+Do zbadania normalności reszt przeanalizujemy histogram oraz wykres Q-Q reszt.
+```{r}
+ggplot(model_Income, aes(x = .resid)) + geom_histogram(aes(y = after_stat(density)), bins = 30, fill = "cornflowerblue", color = "black") + stat_function(fun = dnorm, args = list(mean = mean(residuals(model_Income)), sd = sd(residuals(model_Income))), color = "darkblue", size = 1, aes(linetype = "Gęstość rozkładu normalnego")) + labs(title = "Histogram reszt z modelu ",x = "Reszty",y = "Częstotliwość",linetype = "Legenda" ) +theme_minimal() + theme(plot.title = element_text(size = 15, hjust = 0.5))
+```
+
+Histogram reszt jest w przybliżeniu symetryczny oraz krzywa normalna dobrze dopasowuje się do niego, co sugeruje nam zgodność z rozkładem normalnym.
+```{r}
+ggplot(model_Income, aes(sample=.resid)) + geom_qq() + geom_qq_line(color="darkgreen") + labs(title='Wykres kwartyl-kwartyl reszt', x='Kwartyle teoretyczne', y='Kwartyle próbkowe')
+```
+
+Punkty układają się wzdłuż linii co wskazuje nam, iż rozkład reszt można uznać za normalny. Trzeba jednak zwrócić uwagę, iż krańce wykresu mogą wskazywać na niewielkie odchylenia w ogonach. 
+ 
+### Założenie 3: Zerowa śednia reszt
+Sprawdzamy założenie o zerowej sredniej reszt za pomocą testu t studenta oraz wykresu zależności reszt od dopasowanych wartości.
+ 
+```{r}
+t.test(model_Income$residuals)
+```
+Test t wykazał, iż średnia jest równa $0$. Wskazuje na to m.in: 
+
+- wartość p-value, która wynosi dokładnie $1$, co oznacza, że nie ma dowodów na odrzucenie hipotezy zerowej,
+
+- $95\%$ przedział ufności dla średniej wynosi od $-0.3152213$ do $0.3152213$, co obejmuje wartość $0$. 
+
+- obliczona średnia reszt wynosi $1.572007e-16$ (praktycznie $0$).
+
+```{r}
+ggplot(model_Income, aes(.fitted, .resid)) + geom_point() + stat_smooth(method='loess', formula=y~x, se=FALSE) + 
+  geom_hline(yintercept=0, linetype='dashed', color='red') + labs(title='Wykres zależności reszt od dopasowanych wartości', x='Dopasowane wartości',y='Reszty')
+```
+
+Powyższy wykres dobrze obrazuje nam zerowość średnich reszt oraz niezależność reszt. Reszty są równomiernie rozłożone wokół zera oraz wygładzona niebieska linia jest niemal płaska i stale bliska zeru.
+
+### Założenie 4: Niezależność reszt 
+
+Poza powyższym wykresem przeprowadzimy dodatkowo test Durbina Watsona. 
+
+```{r, message=FALSE}
+library(lmtest)
+lmtest::dwtest(model_Income)
+```
+W naszym przypadku p-value jest większa od $\alpha=0.05$ więc nie mamy dowodów, aby odrzucić hipotezę o niezależności w resztach, co popierałby powyższy wykres. 
+ 
+### Założenie 5: Homoskedastyczność 
+
+```{r}
+ggplot(model_Income, aes(.fitted, sqrt(abs(.stdresid)))) + geom_point() + stat_smooth(method='loess', formula=y~x, se=FALSE) +
+  labs(title='Zależność pierwiastka standaryzowanych reszt od dopasowanych wartości', x='Dopasowane wartości', y='Pierwiastek standaryzowanych reszt')
+```
+
+W przypadku tego wykresu punkty wydają się równomiernie rozproszone w całym zakresie wartości dopasowanych, co sugeruje brak problemu z występowaniem heteroskedastyczności. W związku z tym zakładamy, że mamy do czynienia z homoskedastycznością, jednak dla upewnienia przeprowadzimy test Breusch-Pagan.
+
+```{r}
+lmtest::bptest(model_Income)
+```
+$P-value$ z testu Breusch-Pagan wyniosła znacznie więcej niż $\alpha=0.05$, zatem nie możemy odrzucić hipotezy zerowej o homoskedastyczności reszt. Test potwierdza powyższe wnioski. 
+
+Wszystkie założenia dla tego modelu zostały spełnione.
+
+### Sprawdzenie jakości modelu 
+
+```{r}
+summary(model_Income)
+```
+Mediana reszt wynosi $-0.1845$, co jest bliskie zeru, a kwartyle ($-1.8942$ i $1.7813$) sugerują, że rozkład reszt jest dość zbliżony do symetrycznego. 
+Wartość współczynnika dla przecięcia to $6.420473$, co oznacza, że gdy Income wynosi $0$, przewidywana wartość Sales wynosi $6.42$.
+Wartość współczynnika dla Income to $0.015899$, co oznacza, że dla każdej jednostkowej zmiany dochodów (Income), Sales wzrasta o około $0.0159$ jednostki. 
+
+
+```{r}
+test_prediction_2<-predict(model_Income,newdata=carseats_test)
+train_prediction_2 <- predict(model_Income,newdata=carseats_train)
+```
+Do oceny tego, jak model radzi sobie z przewidywaniem wartości ze zbioru testowego użyjemy RMSE oraz MAE. 
+
+
+```{r}
+RMSE_test_2<-RMSE(carseats_test$Sales,test_prediction_2)
+RMSE_train_2<-RMSE(carseats_train$Sales,train_prediction_2)
+cat("RMSE_test_2:",RMSE_test_2,"\n")
+cat("RMSE_train_2:", RMSE_train_2)
+```
+
+RMSE na zbiorze treningowym jest nieco mniejsze niż na zbiorze testowym, co sugeruje, że model działa nieco lepiej na danych, na których był trenowany. Jednak jest to niewielka różnica. 
+```{r}
+MAE_test_2<-MAE(carseats_test$Sales,test_prediction_2)
+MAE_train_2<-MAE(carseats_train$Sales,train_prediction_2)
+cat("MAE_test_2:",MAE_test_2,"\n")
+cat("MAE_train_2:",MAE_train_2)
+```
+MAE na zbiorze treningowym jest nieco mniejsze niż na zbiorze testowym, co podobnie jak w przypadku RMSE może sugerować, że model jest lepiej dopasowany do danych treningowych, a mniej dokładny na zbiorze testowym. Mała różnica między MAE na danych treningowych a testowych jest dobrym znakiem, ponieważ oznacza to, że model nie jest bardzo przeuczony. Z drugiej strony, wartości MAE w granicach 2.2–2.3 wskazują, że model wciąż może mieć trudności z dokładnym przewidywaniem Sales.
+
+
+## Model pomiędzy zmienną Sales, a zmienną Advertising. 
+Zaczynamy od dopasowania modelu między zmienną Sales a zmienną Advertising. 
+Dopasujmy model 
+
+```{r}
+model_Advertising <- lm(Sales ~ Advertising, data=carseats_train)
+```
+Poprawność modelu zależy od spełnienia założeń, więc przejdźmy do weryfikacji wcześniej wypisanych punktów.
+
+### Założenie 1: Zależność liniowa
+
+Najpierw musimy zweryfikować, czy istnieje zależność liniowa pomiędzy zmienną zależną, a zmienną niezależną.
+Do tego wykorzystamy wykres punktowy oraz współczynnik korelacji Pearsona. 
+
+```{r}
+cor.test(carseats_train$Advertising, carseats_train$Sales)
+```
+P-value znacznie mniejsze od $0.05$ oznacza, że związek między Advertising, a Sales jest statystycznie istotny. Zatem możemy odrzucić hipotezę zerową  i przyjąć, że istnieje prawdziwa zależność między tymi zmiennymi w populacji.
+Przedział ufności oznacza, że z $95\%$ pewnością możemy stwierdzić, że rzeczywista korelacja w populacji leży w tym zakresie. Ponieważ cały przedział jest dodatni i nie obejmuje zera, potwierdza to istnienie dodatniej zależności. Współczynnik korelacji wskazuje na słabą dodatnią zależność między zmiennymi. Istnieje statystycznie istotna, słaba dodatnia korelacja między wydatkami na reklamę (Advertising), a sprzedażą (Sales).
+
+```{r}
+ggplot(carseats_train, aes(x=Advertising, y=Sales)) + geom_point() + labs(title="Wykres punktowy zależnosci budżetu na reklamę, a sprzedaży", x = "Budżet na reklamę (tys.)", y = "Sprzedaż (tys.)") + geom_smooth(method='lm' ,formula=y~x, se=FALSE)
+```
+
+Patrząc na wykres zauważamy, że linia regresji wskazuje na liniowy trend, co za tym idzie istnieje zależność liniowa między budżetem reklamowym, a sprzedażą. Jednakże, rozkład punktów jest szeroki i nieregularny. Warto zauważyć, że punkty układają się w sposób niesymetryczny – jest bardzo dużo wartości przy bardzo niskim budżecie (blisko $0$) oraz mamy coraz mniej wartości przy budżecie powyżej $20$ tysięcy.
+
+### Założenie 2: Rozkład reszt
+
+Do zbadania normalności reszt przeanalizujemy histogram oraz wykres Q-Q reszt.
+
+```{r}
+ggplot(model_Advertising, aes(x = .resid)) + geom_histogram(aes(y = after_stat(density)), bins = 30, fill = "cyan", color = "black") + stat_function(fun = dnorm, args = list(mean = mean(residuals(model_Advertising)), sd = sd(residuals(model_Advertising))), color = "darkblue", size = 1, aes(linetype = "Gęstość rozkładu normalnego")) + labs(title = "Histogram reszt z modelu ",x = "Reszty",y = "Częstotliwość",linetype = "Legenda" ) +theme_minimal() + theme(plot.title = element_text(size = 15, hjust = 0.5))
+```
+
+```{r}
+ggplot(model_Advertising, aes(sample=.resid)) + geom_qq() + geom_qq_line(color="darkgreen") + labs(title='Wykres kwartyl-kwartyl reszt', x='Kwartyle teoretyczne', y='Kwartyle próbkowe')
+```
+
+Histogram pokazuje, że rozkład reszt jest zbliżony do normalnego, chociaż istnieją drobne odchylenia w prawym ogonie oraz jeden ze słupków znacznie odstaje od innych. Na wykresie Q-Q reszt punkty układają się wzdłuż lini, jedynie krańce wykresu mogą wskazywać na niewielkie odchylenia w ogonach. Po analizie przedstawionych powyżej histogramu i wykresu Q-Q reszt można stwierdzić, że nasze założenie o normalności rozkładu jest spełnione. 
+
+### Założenie 3: Zerowa średnia reszt
+Do sprawdzenia zerowej średniej reszt używamy klasycznego testu t studenta.
+
+```{r}
+t.test(model_Advertising$residuals)
+```
+Test t wykazał, iż średnia jest równa $0$.
+
+Na podstawie wyniku testu (m.in. p-value i przedział ufności) nie ma podstaw do odrzucenia hipotezy zerowej. Oznacza to, że model spełnia założenie o zerowej średniej reszt.
+
+Warto zwrócić uwagę na wykres zależności reszt do dopasowanych wartości. Służy on nie tylko do określenia, czy średnia reszt wynosi zero, ale także do oceny ich niezależności.
+
+```{r}
+ggplot(model_Advertising, aes(.fitted, .resid)) + geom_point() + stat_smooth(method='loess', formula=y~x, se=FALSE) + geom_hline(yintercept=0, linetype='dashed', color='red') + labs(title='Wykres zależności reszt od dopasowanych wartości', x='Dopasowane wartości',y='Reszty')
+```
+
+W większości linie pokrywają się ze sobą. Jedynie w przypadku wyższych wartości dopasowanych linia wygładzająca (niebieska) delikatnie odchyla się w dół.
+Wykres i test t studenta pokazują, że średnia jest równa $0$.
+
+### Założenie 4: Niezależność reszt
+Już na podstawie powyższego wykresu możemy przyjąć, że reszty są niezależne, ponieważ nie obserwujemy żadnych zauważalnych wzorców ani zależności wśród nich. Dla pewności przeprowadzimy test Durbina Watsona, aby statystycznie potwierdzić niezależność reszt.
+
+```{r, message=FALSE}
+lmtest::dwtest(model_Advertising)
+```
+W naszym przypadku p-value jest większa od $\alpha=0.05$ więc nie mamy dowodów, aby odrzucić hipotezę o niezależności w resztach. Dodatkowo wartość DW jest bardzo bliskie $2$, co wskazuje brak skorelowania reszt. Zatem mamy potwierdzoną niezależność reszt.
+
+
+### Założenie 5: Homoskedastyczność
+
+W diagnozowaniu homoskedastyczności przyda nam się wykres zależności pierwiastka ze standaryzowanych reszt od dopasowanych wartości. 
+
+```{r}
+ggplot(model_Advertising, aes(.fitted, sqrt(abs(.stdresid)))) + geom_point() + stat_smooth(method='loess', formula=y~x, se=FALSE) + labs(title='Zależność pierwiastka standaryzowanych reszt od dopasowanych wartości', x='Dopasowane wartości', y='Pierwiastek standaryzowanych reszt')
+``` 
+
+Na wykresie punkty są dość równomiernie rozproszone wokół linii poziomej, jedynie zauważamy delikatny spadek wariancji reszt przy większych wartościach. Model wydaje się spełniać założenie homoskedastyczności w wystarczającym stopniu. Aby dokładniej ocenić homoskedastyczność użyjemy testu Breusch-Pagan.
+
+```{r}
+lmtest::bptest(model_Advertising)
+```
+ 
+$P-value$ z testu Breusch-Pagan wyniosła znacznie więcej niż $\alpha=0.05$, zatem nie możemy odrzucić hipotezy zerowej o homoskedastyczności reszt. Co sprawia, że możemy być pewni, że nasze założenie zostało prawidłowo odczytane z wykresu.
+
+
+Choć w modelu występują pewne wartości odstające, które mogą trochę utrudniać interpretację, to model regresji liniowej spełnia wszystkie założenia. Sugeruje to, że model jest wiarygodny.
+
+
+###Sprawdzenie jakosci modelu 
+
+
+Model regresji wskazuje na pozytywną, ale słabą zależność między wydatkami na reklamę, a sprzedażą, z wyjaśnieniem tylko około 8.9% zmienności w sprzedaży.
+```{r}
+summary(model_Advertising)
+```
+Zwiększenie Advertising o 1 jednostkę powoduje wzrost Sales o 0.12620 jednostki, przy założeniu, że pozostałe zmienne pozostają niezmienione. Błąd standardowy reszt równy 2.691. Jest to miara tego, jak bardzo wartości rzeczywiste odbiegają od wartości przewidywanych przez model. Przecięcie 6.65 wskazuje, że sprzedaż wyniesie tyle, jeśli nie wydamy żadnych pieniędzy na reklamę.
+Oba współczynniki (Intercept i Advertising) są statystycznie bardzo istotne. $R^2$ wskazuje na to, iż model wyjaśnia tylko niewielką część zmienności Sales, co wskazuje na to, że istnieją prawdopodobnie inne istotne czynniki wpływające na Sales. 
+
+
+```{r}
+test_prediction_3 <- predict(model_Advertising,newdata=carseats_test)
+train_prediction_3 <- predict(model_Advertising,newdata=carseats_train)
+```
+
+Do oceny tego, jak model radzi sobie z przewidywaniem wartosci ze zbioru testowego użyjemy RMSE oraz MAE. 
+```{r}
+RMSE_test_3<-RMSE(carseats_test$Sales,test_prediction_3)
+RMSE_train_3<-RMSE(carseats_train$Sales,train_prediction_3)
+cat("RMSE_test_3:",RMSE_test_3,"\n")
+cat("RMSE_train_3:", RMSE_train_3)
+```
+```{r}
+MAE_test_3<-MAE(carseats_test$Sales,test_prediction_3)
+MAE_train_3<-MAE(carseats_train$Sales,train_prediction_3)
+cat("MAE_test_3:",MAE_test_3,"\n")
+cat("MAE_train_3:",MAE_train_3)
+```
+
+Jest niewielka różnica między danymi testowymi i treningowymi, co sugeruje, że model nie jest zbyt przeuczony. 
+
+
+MAE ma nieco lepszy wynik niż RMSE (im mniejsza wartość, tym lepiej), ponieważ RMSE jest bardziej wrażliwe na duże błędy. Stosunkowo minimalnie większa różnica tych  miar, niż w poprzednich modelach może nam sugerować, iż mamy do czynienia z większymi odchyleniami w tym przypadku. 
+
+
+Jednak należy zaznaczyć, że Advertising jest statystycznie istotnym predyktorem Sales, z dodatnią zależnością.
+
+## Model pomiędzy zmienną Sales, a zmienną Population. 
+
+```{r}
+model_Population <- lm(Sales ~ Population, data=carseats_train)
+```
+### Założenie 1: Zależność liniowa
+
+Weryfikujemy, czy istnieje zależność liniowa pomiędzy zmienną zależną, a zmienną niezależną.
+Ponownie wykorzystujemy wykres punktowy oraz współczynnik korelacji Pearsona. 
+
+```{r}
+cor.test(carseats_train$Population, carseats_train$Sales)
+```
+Współczynnik korelacji wskazuje nam na bardzo słabą dodatnią korelację między zmiennymi, jest on niewiele wiekszy od zera. Przedział ufności obejmujący 0 sugeruje także brak silnej liniowej zależności między zmiennymi. P-value > 0.05 oznacza, że nie ma wystarczających dowodów na istotność tej zależności. W takiej sytuacji pozostajemy przy hipotezie zerowej, która zakłada brak takiego związku. 
+Wyniki sugerują, że liczba mieszkańców nie ma praktycznie wpływu na sprzedaż.
+
+Zobaczmy co wykaże nam wykres. 
+```{r}
+ggplot(carseats_train, aes(x=Population, y=Sales)) + geom_point() + labs(title = "Zależność sprzedaży od wielkości populacji ", x = "Liczba ludności(tys.)", y = "Sprzedaż (tys.)") + geom_smooth(method='lm' ,formula=y~x, se=FALSE)
+```
+
+Wykres niestety odzwierciedla nam to co wykazał test. Jeśli istnieje korelacja między zmiennymi to jest ona bardzo niewielka i nieistotna. Nasze wartości są dość losowo rozrzucone i mimo, iż nie zaobserwowaliśmy żadnych wyraźnych zakrzywień ani skoków, nie mamy wyraźnego utwierdzenia o zależności liniowej. Mimo wszystko przejdziemy do sprawdzenia pozostałych założeń.
+
+### Założenie 2: Rozkład reszt
+
+Do zbadania normalności reszt przeanalizujemy histogram oraz wykres Q-Q reszt.
+
+
+```{r}
+ggplot(model_Population, aes(x = .resid)) + geom_histogram(aes(y = after_stat(density)), bins = 30, fill = "aquamarine", color = "black") + stat_function(fun = dnorm, args = list(mean = mean(residuals(model_Population)), sd = sd(residuals(model_Population))), color = "blue", size = 1, aes(linetype = "Gęstość rozkładu normalnego")) + labs(title = "Histogram reszt z modelu ",x = "Reszty",y = "Częstotliwość",linetype = "Legenda" ) +theme_minimal() + theme(plot.title = element_text(size = 15, hjust = 0.5))
+```
+
+```{r}
+ggplot(model_Population, aes(sample=.resid)) + geom_qq() + geom_qq_line(color = "darkgreen") + labs(title='Wykres kwartyl-kwartyl reszt', x='Kwartyle teoretyczne', y='Kwartyle próbkowe')
+```
+
+Po analizie przedstawionych powyżej histogramu i wykresu Q-Q reszt można stwierdzić, że nasze założenie o normalności rozkładu jest spełnione. Zauważmy, że ogólnie reszty są bliskie normalności, ale można dostrzec pewne odstępstwa od idealnego kształtu dzwonowego. Podobnie na wykresie Q-Q reszt, widzimy, że dane z rozkładu leżą wzdłuż prostej, ale można zauważyć niewielkie odstępstwa na ogonach. 
+
+### Założenie 3: Zerowa średnia reszt
+Do sprawdzenia zerowej średniej reszt używamy klasycznego testu t studenta.
+
+```{r}
+t.test(model_Population$residuals)
+```
+Wartość p-value wynosi 1, co oznacza, że nie ma żadnych dowodów na odrzucenie hipotezy zerowej. Wartość statystyki t oraz średnia próby jest praktycznie równa zero. Wniosek jest jednoznaczny: średnia reszt jest równa zeru. 
+
+
+
+Ponownie zwrócimy uwagę na wykres zależności reszt do dopasowanych wartości. 
+
+```{r}
+ggplot(model_Population, aes(.fitted, .resid)) + geom_point() + stat_smooth(method='loess', formula=y~x, se=FALSE) + geom_hline(yintercept=0, linetype='dashed', color='red') + labs(title='Wykres zależności reszt do dopasowanych wartości', x='Dopasowane wartości', y='Reszty')
+```
+
+Wykres potwierdza wynik testu, widzimy symetrycznie rozrzucone reszty wzdłuż niebieskiej lini a ona z kolei leży niemal na prostej y=0,  co dowodzi poprawność naszych wcześniejszych wniosków. 
+
+### Założenie 4: Niezależność reszt
+Powyższy wykres już dobrze obrazuje niezależność reszt. Niebieska linia jest prawie pozioma, co sugeruje brak systematycznych wzorców, a co za tym idzie brak zależności reszt od dopasowanych wartosci. Dla potwierdzenia sprawdzimy także niezależność reszt poprzez test Durbina Watsona. 
+
+```{r, message=FALSE}
+library(lmtest)
+lmtest::dwtest(model_Population)
+```
+$P-value$ z testu Breusch-Pagan wyniosła znacznie więcej niż $\alpha=0.05$, zatem nie możemy odrzucić hipotezy zerowej o homoskedastyczności reszt. Co utwierdza nas w przekonaniu o prawidłowym odczytaniu z wykresu, iż nasze założenie jest spełnione. 
+
+
+### Założenie 5: Homoskedastyczność
+
+Ponownie korzystamy z wykresu zależności pierwiastka ze standaryzowanych reszt od dopasowanych wartości. 
+
+```{r}
+ggplot(model_Population, aes(.fitted, sqrt(abs(.stdresid)))) + geom_point() + stat_smooth(method='loess', formula=y~x, se=FALSE) + labs(title='Zależność pierwiastka standaryzowanych reszt od dopasowanych wartości', x='Dopasowane wartości', y='Pierwiastek standaryzowanych reszt')
+```
+
+Na wykresie nie widać zależnosci zmiennych, dane są rozproszone losowo wzdłuż niebieskiej lini, możemy zatem wywnioskować z wykresu homoskedastyczność. Dla pewności zastosujemy jeszcze test Breusch-Pagan.
+
+W tym modelu zaobserwowaliśmy problemy z zależnością liniową, co budzi wątpliwości co do spełnienia tego założenia, z tendencją do negatywnego wyniku w tym zakresie. Pozostałe założenia zostały spełnione. Należy jednak pamiętać o możliwych zaburzeniach, które mogą wpłynąć na prawidłowość tego modelu.
+P-value jest większa od $\alpha=0.05$  nie mamy zatem dowodów, aby odrzucić hipotezę o niezależności w resztach. Test potwierdza niezależność reszt. 
+
+
+### Sprawdzenie jakosci modelu 
+
+
+```{r}
+summary(model_Population)
+```
+Każdy wzrost populacji o 1 jednostkę powoduje wzrost sprzedaży o około 0.001236 jednostki. Choć błąd standardowy dla naszej zmiennej jest stosunkowo niewielki jest on porównywalny z jej współczynnikiem, co sugeruje dużą niepewność w oszacowaniu wpływu populacji na sprzedaż. $R^2=0,004$ oznacza, że tylko $0,4\%$ zmienności zmiennej zależnej jest wyjaśniane przez model. Jest to bardzo niska wartość, sugerująca, że model nie jest dobrze dopasowany do danych, a większość zmienności zmiennej zależnej wynika z czynników, które nie zostały uwzględnione w tym modelu.
+
+
+```{r}
+test_prediction_4<-predict(model_Population,newdata=carseats_test)
+train_prediction_4 <- predict(model_Population,newdata=carseats_train)
+```
+
+ Ponownie używamy RMSE i MAE do oceny modelu. 
+
+
+```{r}
+RMSE_test_4<-RMSE(carseats_test$Sales,test_prediction_4)
+RMSE_train_4<-RMSE(carseats_train$Sales,train_prediction_4)
+cat("RMSE_test_4:",RMSE_test_4,"\n")
+cat("RMSE_train_4:", RMSE_train_4)
+```
+```{r}
+MAE_test_4<-MAE(carseats_test$Sales,test_prediction_4)
+MAE_train_4<-MAE(carseats_train$Sales,train_prediction_4)
+cat("MAE_test_4:",MAE_test_4,"\n")
+cat("MAE_train_4:",MAE_train_4)
+```
+
+MAE na zbiorze treningowym jest nieco mniejsze niż na testowym, co sugeruje, że model jest bardziej dokładny w przewidywaniu sprzedaży na danych, na których był uczony. Różnica w RMSE na zbiorze treningowym a testowym jest nieco mniejsza. 
+MAE wskazuje, że na ogół średni błąd przewidywań modelu to około 2.32 jednostki sprzedaży. Jest to dość stabilna miara, traktująca wszystkie błędy równorzędnie. RMSE (około 2.86) jest wyższe, co wskazuje na większą czułość modelu na błędy o większej skali. RMSE uwzględnia duże błędy bardziej niż MAE, dlatego wartość jest wyższa, co sugeruje, że model popełnia większe błędy w niektórych przypadkach.
+
+
+
+## Model pomiędzy zmienną Sales, a zmienną Price. 
+
+```{r}
+model_Price <- lm(Sales ~ Price, data=carseats_train)
+
+```
+### Założenie 1: Zależność liniowa
+
+Do weryfikacji czy istnieje zależność liniowa pomiędzy zmienną zależną, a zmienną niezależną, ponownie wykorzystujemy wykres punktowy oraz współczynnik korelacji Pearsona. 
+
+```{r}
+cor.test(carseats_train$Price, carseats_train$Sales)
+```
+Współczynnik korelacji wskazuje nam na ujemną korelację między zmiennymi. Natomiast wartość P-value wskazuje, iż korelacja jest istotna statystycznie. Odrzucamy hipoteze zerową.
+
+Zobaczmy co wykaże nam wykres. 
+```{r}
+ggplot(carseats_train, aes(x=Price, y=Sales)) + geom_point() + labs(title = "Zależność sprzedaży od ceny ", x = "Cena", y = "Sprzedaż (tys.)") + geom_smooth(method='lm' ,formula=y~x, se=FALSE)
+```
+
+Na wykresie możemy zauważyć, iż inia regresji wskazuje na ujemną liniową zależność między ceną a sprzedażą. Inaczej mówiąc wraz ze wzrostem ceny sprzedaż spada w sposób, który można przybliżyć liniowo.
+Podsumowując oba sprawdzenia istnieje statystycznie istotna, umiarkowana, ujemna korelacja między ceną fotelików samochodowych a ich sprzedażą.
+
+### Założenie 2: Rozkład reszt
+
+Do zbadania normalności reszt standardowo przeanalizujemy histogram oraz wykres Q-Q reszt.
+
+
+```{r}
+ggplot(model_Price, aes(x = .resid)) + geom_histogram(aes(y = after_stat(density)), bins = 30, fill = "plum1", color = "black") + stat_function(fun = dnorm, args = list(mean = mean(residuals(model_Price)), sd = sd(residuals(model_Price))), color = "magenta4", size = 1, aes(linetype = "Gęstość rozkładu normalnego")) + labs(title = "Histogram reszt z modelu ",x = "Reszty",y = "Częstotliwość",linetype = "Legenda" ) +theme_minimal() + theme(plot.title = element_text(size = 15, hjust = 0.5))
+```
+
+Histogram ma symetryczny, dzwonowaty kształt, zbliżony do rozkładu normalnego. To dobry sygnał, wskazujący, że założenie normalności reszt jest w dużej mierze spełnione. Istnieją pewne niewielkie odchylenia szczególnie na końcach ogonów, gdzie liczba obserwacji jest nieco większa bądź mniejsza niż przewidywana przez rozkład normalny. Może to sugerować, że w modelu występują niewielkie błędy w dopasowaniu lub dane mają pewne wartości odstające.
+
+```{r}
+ggplot(model_Price, aes(sample=.resid)) + geom_qq() + geom_qq_line(color = "darkgreen") + labs(title='Wykres kwartyl-kwartyl reszt', x='Kwartyle teoretyczne', y='Kwartyle próbkowe')
+```
+
+Punkty są wyraźnie ułożone liniowo. Wykres kwantyl-kwantyl utwierdza nas w przekonaniu, iż reszty są zbliżone do rozkładu normalnego. Niewielkie odchylenia na ogonach mogą być do zaakceptowania, w tym przypadku. 
+
+### Założenie 3: Zerowa średnia reszt
+
+Do sprawdzenia zerowej średniej reszt używamy klasycznego testu t studenta.
+
+```{r}
+t.test(model_Price$residuals)
+```
+Test potwierdza, iż model jest zgodny z założeniem, że średnia reszt wynosi $0$.
+Wartość $p-value = 1$ oraz ekstremalnie mała średnia reszt potwierdzają, że model jest dobrze dopasowany pod kątem tego kryterium.
+
+
+
+Ponownie zwrócimy uwagę na wykres zależności reszt do dopasowanych wartości. 
+
+```{r}
+ggplot(model_Price, aes(.fitted, .resid)) + geom_point() + stat_smooth(method='loess', formula=y~x, se=FALSE) + geom_hline(yintercept=0, linetype='dashed', color='red') + labs(title='Wykres zależności reszt do dopasowanych wartości', x='Dopasowane wartości', y='Reszty')
+```
+Można zauważyć odchylenia na krańcach wykresu. Jednak ogólnie (poza skrajnymi wartościami) nie jest widoczna żadna struktura, która mogłaby nam mówić o zależności reszt, punkty są rozproszone równomiernie powyżej i poniżej poziomu $y=0$, w większości zakresu. Mamy graficzne potwierdzenie wyniku z testu t studenta, iż średnia reszt równa jest $0$. 
+
+### Założenie 4: Niezależność reszt
+Temat o niezależności reszt poruszyliśmy już w poprzednim podpunkcie omawiając wykres zależności reszt do dopasowanych wartości. Dla potwierdzenia naszych stwierdzeń przeprowadzimy test Durbina Watsona. 
+
+```{r, message=FALSE}
+library(lmtest)
+lmtest::dwtest(model_Price)
+```
+P-value jest większa od $\alpha=0.05$  nie mamy zatem dowodów, aby odrzucić hipotezę o niezależności w resztach. Wartość DW znajdująca się blisko 2, sugeruje, że reszty są raczej niezależne od siebie. Test potwierdza nasze wnioski. 
+
+### Założenie 5: Homoskedastyczność
+
+Ponownie korzystamy z wykresu zależności pierwiastka ze standaryzowanych reszt od dopasowanych wartości. 
+
+```{r}
+ggplot(model_Price, aes(.fitted, sqrt(abs(.stdresid)))) + geom_point() + stat_smooth(method='loess', formula=y~x, se=FALSE) + labs(title='Zależność pierwiastka standaryzowanych reszt od dopasowanych wartości', x='Dopasowane wartości', y='Pierwiastek standaryzowanych reszt')
+```
+
+Na wykresie nie widać zależności zmiennych, dane są rozproszone losowo. Jedynie dla małych dopasowanych wartości widzimy zakrzywienie lini. Wykres sugeruje nam spełnienie założenia o homoskedastyczności. Dla upewnienia zastosujemy jeszcze test Breusch-Pagan.
+
+```{r}
+lmtest::bptest(model_Price)
+```
+Wartość BP sugeruje raczej o braku istotnych dowodów na występowanie heteroskedastyczności w modelu. P-value wynoszące 0.7686 jest znacznie większe niż ustalone przez nas wcześniej $\alpha= 0.05$, co oznacza, że nie ma wystarczających dowodów, aby odrzucić hipotezę zerową. Zatem, na naszym poziomie istotności, możemy stwierdzić, że wariancja reszt jest stała, czyli nie ma heteroskedastyczności. 
+
+Wszystkie założenia tego modelu są spełnione. 
+
+### Sprawdzenie jakosci modelu 
+```{r}
+summary(model_Price)
+```
+Ujemny współczynnik $−0.04739$ oznacza, że istnieje ujemna korelacja między ceną a sprzedażą, co jest dość logiczne - im wyższa cena, tym niższa sprzedaż. Wartość dla przecięcia $12.99210$ jest dodatnia, co sugeruje, że w przypadku, gdy cena jest równa $0$ (raczej nierealistyczne w praktyce), przewidywana sprzedaż nie jest równa 0, lecz wynosi około $13$ jednostek. 
+Błąd standardowy dla intercept jest stosunkowo niski, może to sugerować, że oszacowanie tego parametru jest dość dokładne.
+Błąd standardowy dla współczynnika ceny jest również stosunkowo niski, co sugeruje, że szacowanie wpływu ceny na sprzedaż jest precyzyjne.
+Wartość $R^2 = 0,1574$ wskazuje, że model wyjaśnia około $15,74\%$ zmienności zmiennej zależnej, co wciąż może być uznane za stosunkowo niski wynik, szczególnie jeśli celem modelu są dokładne prognozy. Niemniej jednak, w porównaniu do wcześniejszych modeli, które miały niższe wartości obecny model jest najlepiej dopasowany. Możemy więc stwierdzić, że cena ma rzeczywisty wpływ na sprzedaż.
+
+
+```{r}
+test_prediction_5<-predict(model_Price,newdata=carseats_test)
+train_prediction_5 <- predict(model_Price,newdata=carseats_train)
+```
+
+Ponownie używamy RMSE i MAE do oceny modelu. 
+
+```{r}
+RMSE_test_5<-RMSE(carseats_test$Sales,test_prediction_5)
+RMSE_train_5<-RMSE(carseats_train$Sales,train_prediction_5)
+cat("RMSE_test_5:",RMSE_test_5,"\n")
+cat("RMSE_train_5:", RMSE_train_5)
+```
+RMSE na zbiorze testowym jest mniejsze niż RMSE na zbiorze treningowym, co jest pozytywnym sygnałem, sugerującym, że model może być bardziej ogólny i skuteczny na nowych, niewidzianych wcześniej danych.
+
+```{r}
+MAE_test_5<-MAE(carseats_test$Sales,test_prediction_5)
+MAE_train_5<-MAE(carseats_train$Sales,train_prediction_5)
+cat("MAE_test_5:",MAE_test_5,"\n")
+cat("MAE_train_5:",MAE_train_5)
+```
+
+Podobnie jak przy RMSE: niższa wartość MAE na zbiorze testowym sugeruje, że model lepiej prognozuje wyniki na nowych danych, co jest pozytywnym sygnałem.
+Zauważamy, iż różnica miedzy RMSE a MAE jest dotychczas najniższa, co sugeruje nam, że model nie ma tak dużych, odstających wartości, które wpłynęłyby na wyniki. Możemy uznać, iż w porównaniu do poprzednich modeli, na razie ten model jest stosunkowo najbardziej stabilny i nie ma nadmiernych odchyleń w swoich przewidywaniach.
+
+
+## Model pomiędzy zmienną Sales, a zmienną Age. 
+
+```{r}
+model_Age <- lm(Sales ~ Age, data=carseats_train)
+```
+### Założenie 1: Zależność liniowa
+
+Do weryfikacji czy istnieje zależność liniowa pomiędzy zmienną zależną, a zmienną niezależną, ponownie wykorzystujemy wykres punktowy oraz współczynnik korelacji Pearsona. 
+
+```{r}
+cor.test(carseats_train$Age, carseats_train$Sales)
+```
+Współczynnik korelacji wskazuje nam na słabą ujemną korelację między zmiennymi.Wartość p-value jest bardzo mała, poniżej progu $0.05$, co oznacza, że możemy odrzucić hipotezę zerową.
+Oznacza to, że zaobserwowana korelacja między zmiennymi Age i Sales jest statystycznie istotna. 
+
+Zobaczmy jeszcze na wykres. 
+```{r}
+ggplot(carseats_train, aes(x=Age, y=Sales)) + geom_point() + labs(title = "Zależność sprzedaży od średniego wieku lokalnej populacji ", x = "Wiek", y = "Sprzedaż (tys.)") + geom_smooth(method='lm' ,formula=y~x, se=FALSE)
+```
+
+Wykres sugeruje pewien spadkowy liniowy trend. 
+Im starszy wiek lokalnej społeczności, tym nieznacznie mniejsza sprzedaż.
+Wykres potwierdza spełnienie założenia zależności liniowej.
+
+### Założenie 2: Rozkład reszt
+
+ Badając normalność rozkładu reszt posłużymy się histogram oraz wykres Q-Q reszt.
+
+
+```{r}
+ggplot(model_Age, aes(x = .resid)) + geom_histogram(aes(y = after_stat(density)), bins = 30, fill = "lemonchiffon1", color = "black") + stat_function(fun = dnorm, args = list(mean = mean(residuals(model_Age)), sd = sd(residuals(model_Age))), color = "darkgreen", size = 1, aes(linetype = "Gęstość rozkładu normalnego")) + labs(title = "Histogram reszt z modelu ",x = "Reszty",y = "Częstotliwość",linetype = "Legenda" ) +theme_minimal() + theme(plot.title = element_text(size = 15, hjust = 0.5))
+```
+
+Kształt histogramu jest zbliżony do krzywej normalnej, istnieje jednak parę wartości odstajacych, które wskazują na pewne nieregularności. Mimo to uznajemy, iż nasze reszty modelu są bliskie normalności, co jest dobrą przesłanką dla poprawności modelu liniowego.
+Sprawdźmy jeszcze wykres kwantyl-kwantyl dla potwierdzenia. 
+```{r}
+ggplot(model_Age, aes(sample=.resid)) + geom_qq() + geom_qq_line(color = "darkgreen") + labs(title='Wykres kwartyl-kwartyl reszt', x='Kwartyle teoretyczne', y='Kwartyle próbkowe')
+```
+
+Wykres Q-Q utwierdza nas w przekonaniu, iż reszty są zbliżone do rozkładu normalnego. Punkty układają się wmiarę równo wzdłuż prostej. Zauważamy lekkie odchylenia na ogonach, jednak nie powinny być one znaczące. 
+
+### Założenie 3: Zerowa średnia reszt
+
+Do sprawdzenia zerowej średniej reszt używamy ponownie klasycznego testu t studenta.
+
+```{r}
+t.test(model_Age$residuals)
+```
+Wartość t bliska zeru sugeruje, że średnia próby jest bardzo bliska zakładanej wartości $0$. Wartość p-value= 1 oznacza, że nie ma dowodów na odrzucenie hipotezy zerowej. Przedział ufności także zawiera zero, co dodatkowo wspiera wniosek, że średnia reszt może wynosić zero. Także szacowana średnia reszt wynosi w zasadzie zero. Wszystkie parametry wskazują na to, iż możemy uznać założenie o zerowej średniej reszt za spełnione. 
+
+### Założenie 4: Niezależność reszt
+
+Sprawdzenie tego zalożenia wykonamy poprzez test Durbina Watsona. 
+
+```{r, message=FALSE}
+library(lmtest)
+lmtest::dwtest(model_Age)
+```
+P-value jest większa od $\alpha=0.05$  nie mamy zatem dowodów, aby odrzucić hipotezę o niezależności w resztach. Wskazuje to, że brak autokorelacji w resztach nie jest statystycznie istotny. Wartość DW znajdująca się blisko $2$, sugeruje, że reszty są  w dużej mierze niezależne od siebie.
+
+Zwróćmy jeszczę uwgaę na wykres "Residuals vs Fitted". 
+```{r}
+ggplot(model_Age, aes(.fitted, .resid)) + geom_point() + stat_smooth(method='loess', formula=y~x, se=FALSE) + geom_hline(yintercept=0, linetype='dashed', color='red') + labs(title='Wykres zależności reszt do dopasowanych wartości', x='Dopasowane wartości', y='Reszty')
+```
+
+Wykres potwierdza nam stwierdzoną wcześniej średnią zerową i niezależność reszt. Reszty bez widocznych wzorców są dość symetrycznie równomienie rozłożone względem poziomu $0$. 
+
+### Założenie 5: Homoskedastyczność
+
+Ponownie korzystamy z wykresu zależności pierwiastka ze standaryzowanych reszt od dopasowanych wartości. 
+
+```{r}
+ggplot(model_Age, aes(.fitted, sqrt(abs(.stdresid)))) + geom_point() + stat_smooth(method='loess', formula=y~x, se=FALSE) + labs(title='Zależność pierwiastka standaryzowanych reszt od dopasowanych wartości', x='Dopasowane wartości', y='Pierwiastek standaryzowanych reszt')
+```
+
+Wykres ukazuje nam, że między wariancją a dopasowanymi resztami nie ma zależności liniowej. Nie dostrzegamy żadnych wyraźnych wzorców, mamy losowe rozproszenie punktów względem prostej. 
+Zastosujemy jeszcze dla pewności test Breusch-Pagan.
+
+```{r}
+lmtest::bptest(model_Age)
+```
+
+Wartość statystyki testu wynosi $0.0022994$, co jest bardzo niską wartością. Sugeruje to brak wyraźnej zależności wariancji reszt od wartości zmiennych niezależnych a także p-value jest większe niż $0.05$, nie mamy więc wystarczających dowodów, by odrzucić hipotezę zerową.
+
+Biorąc pod uwagę wykres i test możemy stwierdzić, że założenie homoskedastyczności jest dotrzymane. 
+
+Wszystkie założenia tego modelu są spełnione. 
+
+### Sprawdzenie jakosci modelu 
+
+```{r}
+summary(model_Age)
+```
+Współczynniki modelu wskazują, że każdemu wzrostowi wieku o 1 jednostkę towarzyszy spadek wartości Sales o około $0.047$.
+Wartość $R^2$ dla zbioru treningowego wynosi $0.0728$, co oznacza, że model wyjaśnia tylko $7,3\%$ zmienności Sales. To wskazuje, że Age jest dość słabym predyktorem dla zmiennej Sales. 
+
+
+
+```{r}
+test_prediction_6<-predict(model_Age,newdata=carseats_test)
+train_prediction_6<- predict(model_Age,newdata=carseats_train)
+```
+
+ Ponownie używamy RMSE i MAE do oceny modelu. 
+
+
+```{r}
+RMSE_test_6<-RMSE(carseats_test$Sales,test_prediction_6)
+RMSE_train_6<-RMSE(carseats_train$Sales,train_prediction_6)
+cat("RMSE_test_6:",RMSE_test_6,"\n")
+cat("RMSE_train_6:",RMSE_train_6)
+```
+Dla zbioru testowego RMSE wynosi 2.865893, co jest wyższe niż dla zbioru treningowego. Niestety oznacza to, że model działa lepiej na danych, na których był trenowany.
+
+```{r}
+MAE_test_6<-MAE(carseats_test$Sales,test_prediction_6)
+MAE_train_6<-MAE(carseats_train$Sales,train_prediction_6)
+cat('MAE_test_6:', MAE_test_6,"\n")
+cat("MAE_test_6:",MAE_train_6)
+```
+Dla zbioru treningowego MAE wynosi $2.163019$, a dla zbioru testowego MAE wynosi 2.356051. Również tutaj widzimy wyższy błąd na zbiorze testowym, co wskazuje na gorsze dopasowanie modelu do nowych danych. Stosunkowo spora różnica między RMSE a MAE wskazuje na możliwość występowania dość dużych błędów oraz wartości odstających. 
+
+## Model pomiędzy zmienną Sales, a zmienną Education. 
+
+```{r}
+model_Education <- lm(Sales ~ Education, data=carseats_train)
+```
+### Założenie 1: Zależność liniowa
+
+Do weryfikacji czy istnieje zależność liniowa pomiędzy zmienną zależną, a zmienną niezależną, ponownie wykorzystujemy wykres punktowy oraz współczynnik korelacji Pearsona. 
+
+```{r}
+cor.test(carseats_train$Education, carseats_train$Sales)
+```
+ P-value jest znacznie wyższe niż $0.05$, co oznacza, że nie mamy wystarczających dowodów, aby odrzucić hipotezę zerową, zakładającą brak liniowej korelacji między zmiennymi. 
+Oszacowana bardzo niska i ujemna korelacja wskazuje na bardzo słabą ujemną korelację między zmiennymi, która praktycznie nie ma znaczenia w kontekście praktycznym. 
+Przedział ufności obejmujący $0$ sugeruje raczej brak istonej korelacji między zmiennymi. 
+Na podstawie wyników testu, możemy stwierdzić, że nie ma statystycznie istotnej korelacji między poziomem wykształcenia a sprzedażą. Korelacja jest bardzo słaba i nie ma dowodów na jej istnienie.
+
+Spójrzmy jeszcze na wykres punktowy i zobaczmy jakie informacje możemy z niego wydobyć.
+```{r}
+ggplot(carseats_train, aes(x=Education, y=Sales)) + geom_point() + labs(title = "Zależność sprzedaży od średniego poziomu edukacji  ", x = "Poziom wykształcenia", y = "Sprzedaż (tys.)") + geom_smooth(method='lm' ,formula=y~x, se=FALSE)
+```
+
+Graficznie również nie zauważamy wyraźnej zależności liniowej. Dopasowana prosta regresji jest pod niewielkim nachyleniem, mimo to nie możemy stwierdzić prawidłowości spełnienia założenia. Nie mamy do tego dokładnych dowodów.
+
+### Założenie 2: Rozkład reszt
+
+Zbadamy teraz normalność rozkładu reszt. 
+Spójrzmy na histogram z dopasowaną gęstością rozkładu normalnego. 
+
+
+```{r}
+ggplot(model_Education, aes(x = .resid)) + geom_histogram(aes(y = after_stat(density)), bins = 30, fill = "salmon", color = "black") + stat_function(fun = dnorm, args = list(mean = mean(residuals(model_Education)), sd = sd(residuals(model_Education))), color ="purple4", size = 1, aes(linetype = "Gęstość rozkładu normalnego")) + labs(title = "Histogram reszt z modelu ",x = "Reszty",y = "Częstotliwość",linetype = "Legenda" ) +theme_minimal() + theme(plot.title = element_text(size = 15, hjust = 0.5))
+```
+
+Ogólny kształt histogramu reszt w przybliżeniu odpowiada kształtowi krzywej normalnej, co sugeruje, że reszty mogą być rozkładem normalnym. Jednakże istnieją pewne odstępstwa, co może wskazywać na lekkie odchylenia od założeń normalności.
+
+Sprawdźmy jeszcze wykres kwantyl-kwantyl dla potwierdzenia. 
+```{r}
+ggplot(model_Education, aes(sample=.resid)) + geom_qq() + geom_qq_line(color = "darkgreen") + labs(title='Wykres kwartyl-kwartyl reszt', x='Kwartyle teoretyczne', y='Kwartyle próbkowe')
+```
+
+Ogólne zgodne zachowanie większości punktów z linią wskazuje, że założenie normalności jest spełnione.
+
+### Założenie 3: Zerowa średnia reszt
+
+Wykonujemy test t studenta.
+
+```{r}
+t.test(model_Education$residuals)
+```
+
+Tak jak w wielu powyższych modelach założenie to jest spełnione. Sugeruje o tym wartość $p-value=1 >0.05$, przedział ufności zawierający $0$, jak i wartość t oraz średnia wynosząca praktycznie $0$. 
+
+### Założenie 4: Niezależność reszt
+
+Sprawdzenie tego założenia wykonamy poprzez test Durbina Watsona. 
+
+```{r, message=FALSE}
+library(lmtest)
+lmtest::dwtest(model_Education)
+```
+Wynik testu wskazuje na spełnienie założenia o niezależności reszt. Patrząc na wysoką wartość p-value$ > 0.05$ oraz wysoką wartość DW bliską wartości $2$ test Durbin-Watsona nie wykazuje istotnej autokorelacji reszt.
+
+
+Zobaczmy jeszcze na graficzną metodę sprawdzenia założenia $3$ i $4$. 
+```{r}
+ggplot(model_Education, aes(.fitted, .resid)) + geom_point() + stat_smooth(method='loess', formula=y~x, se=FALSE) + geom_hline(yintercept=0, linetype='dashed', color='red') + labs(title='Wykres zależności reszt do dopasowanych wartości', x='Dopasowane wartości', y='Reszty')
+```
+
+Niebieska wygładzona linia oscyluje blisko poziomu $0$ w całym zakresie dopasowanych wartości, bez istotnych odchyleń. Rozkład reszt w całym zakresie dopasowanych wartości jest równomierny, co wskazuje, że reszty nie są od nich zależne. 
+Mamy graficzne potwierdzenie, ze model spełnia założenie niezależności reszt oraz o zerowej średniej reszt. 
+
+### Założenie 5: Homoskedastyczność
+
+Do sprawdzenia homoskedastyczności skorzystamy z wykresu zależności pierwiastka ze standaryzowanych reszt od dopasowanych wartości. 
+
+```{r}
+ggplot(model_Education, aes(.fitted, sqrt(abs(.stdresid)))) + geom_point() + stat_smooth(method='loess', formula=y~x, se=FALSE) + labs(title='Zależność pierwiastka standaryzowanych reszt od dopasowanych wartości', x='Dopasowane wartości', y='Pierwiastek standaryzowanych reszt')
+```
+
+Rozrzut punktów na różnych poziomach dopasowanych wartości jest w miarę stały, co oznacza, że wariancja reszt jest względnie jednorodna.
+
+```{r}
+lmtest::bptest(model_Education)
+```
+Ponieważ wartość p-value jest większa niż przyjęty przez nas poziom istotności ($0.05$), mamy brak podstaw do odrzucenia hipotezy zerowej. Oznacza to, że nie ma statystycznie istotnych dowodów na heteroskedastyczność.
+
+Wynik testu potwierdza obserwacje z wykresu reszt. Można uznać, że problem heteroskedastyczności nie występuje w tym modelu.
+
+### Sprawdzenie jakosci modelu 
+
+
+```{r}
+summary(model_Education)
+```
+Współczynnik przy Education wynosi $-0.07603$, co oznacza, że każde zwiększenie poziomu wykształcenia wiąże się ze spadkiem wartości sprzedaży o 0.076 jednostki. $R^2$ dla tego modelu wynosi $0.005151$, co oznacza, że tylko około $0.5\%$ zmienności w Sales jest wyjaśniane przez zmienną Education- jest to bardzo niski wynik. 
+
+```{r}
+test_prediction_7<-predict(model_Education,newdata=carseats_test)
+train_prediction_7<- predict(model_Education,newdata=carseats_train)
+```
+
+Ponownie używamy RMSE i MAE do oceny modelu. 
+
+```{r}
+RMSE_test_7<-RMSE(carseats_test$Sales,test_prediction_7)
+RMSE_train_7<-RMSE(carseats_train$Sales,train_prediction_7)
+cat("RMSE_test_7: ", RMSE_test_7,"\n")
+cat("RMSE_train_7: ", RMSE_train_7)
+```
+RMSE dla zbioru testowego jest nieco wyższe, co może sugerować, że model nie radzi sobie lepiej na nowych danych niż na tych, na których był trenowany. 
+
+```{r}
+MAE_test_7<-MAE(carseats_test$Sales,test_prediction_7)
+MAE_train_7<-MAE(carseats_train$Sales,train_prediction_7)
+cat("MAE_test_7: ", MAE_test_7,"\n")
+cat("MAE_train_7: ", MAE_train_7)
+```
+Ponownie, MAE dla zbioru testowego jest wyższe, co wskazuje na gorszą jakość prognoz na nowych danych.
+
+
+#Porównanie modeli
+
+
+Dla ułatwienia porównania modeli względem siebie stworzymy tablicę zawierającą najważniejsze dla nas miary oceny modelu tzn. RMSE i MAE, zbadane na zbiorze testowym.
+
+```{r}
+
+# Tworzenie ramki danych z wynikami RMSE, MAE, R2
+results <- data.frame(
+  Model = c("model_CompPrice", "model_Income", "model_Advertising", "model_Population","model_Price","model_Age","model_Education"),
+  RMSE = c(RMSE_test_1, RMSE_test_2, RMSE_test_3, RMSE_test_4,RMSE_test_5,RMSE_test_6,RMSE_test_7),
+  MAE = c(MAE_test_1, MAE_test_2, MAE_test_3, MAE_test_4,MAE_test_5,MAE_test_6,MAE_test_7)
+  
+)
+
+print(results)
+
+```
+
+
+Posegregujmy sobie dla ułatwienia tę tabelę. Pierwszą odpowiednio rosnąco względem RMSE (gdyż im mniejsza wartość tym lepszy model), drugą rosnąco względem MAE (taka sama sytuacja jak dla RMSE).
+```{r}
+results_sorted_RMSE <- results[order(results$RMSE, decreasing = FALSE), ]
+print(results_sorted_RMSE)
+results_sorted_MAE<- results[order(results$MAE, decreasing = FALSE), ]
+print(results_sorted_MAE)
+
+```
+
+
+# Podsumowanie
+W analizowanych modelach regresyjnych, najdokładniejszy okazał się model bazujący na zmiennej Price, który uzyskał najniższe wartości RMSE $(2.374)$ i MAE $(1.986)$. Przypomnijmy także, iż różnica między RMSE i MAE tego modelu była najmniejsza ze wszystkich (wynosząca około $0.389$), co oznacza iż ten model ma, mniej od pozostałych, skrajnych odchyleń. A także jest to jedyny z omawianych modeli, którego RMSE i MAE dla zbioru testowego jest mniejsze niż na zbiorze treningowym. Oznacza to, że model dobrze generalizuje na nowych, wcześniej niewidzianych danych. Model ten spełnił wszystkie założenia oraz wyjaśnia największy $\%$ zmienności zmiennej Sales. Wobec tego, możemy śmiało stwierdzić, że model ten jest najbardziej ogólny i efektywny. Przyjmujemy, że model ten najlepiej przewiduje sprzedaż, minimalizując odchylenia od rzeczywistych wartości.
+ 
+Pozostałe modele, takie jak model_Advertising i model_Income, uzyskały zbliżone wyniki RMSE i MAE, ale ich błędy były wyższe, co sugeruje, że ich przewidywania są nieco mniej dokładne. Modele oparte na zmiennych CompPrice, Population, Age i Education osiągnęły wyższe wartości RMSE i MAE, co wskazuje na ich gorszą skuteczność w przewidywaniu sprzedaży. Choć różnice w błędach nie są duże, model_Price wyróżnia się zdecydowanie na tle innych, oferując najtrafniejsze prognozy.
+ 
+Zaznaczmy także, że nie odrzuciliśmy ewentualnego braku liniowości w modelach CompPrice, Education oraz Population, należy zaznaczyć, że wpływa to na poprawność modeli. Wskazane modele najgorzej spełniają założenia regresji liniowej, co negatywnie wpływa na ich wyniki i wiarygodność.
+ 
+Zauważmy także, iż model Age miał największe różnice miedzy miarami z danych testowych i treningowych, co wskazuje na lepsze dopasowanie modelu do danych na których się uczył. Interesujący jest fakt, iż mimo drugiego miejsca pod względem najmniejszego RMSE i MAE, zmienna Advertising ma drugie z kolei największe różnice między danymi treningowymi i testowymi (w RMSE różnica wynosi około $0,14$, a w MAE $0,12$), a także ma największą różnicę między RMSE i MAE na danych testowych wynosząca $0,58$. Takie wyniki mogą wskazywać na największe błędy spośród wszystich modeli oraz zbytnie dopasowanie do danych treningowych.
+ 
+Ciężko zatem określić najgorszy z modeli, ponieważ składa się na to wiele czynników, a tym samym utrudniają nam interpretacje niewielkie różnice w wartościach miar błędu, co wskazuje że różne zmienne niezależne dają zbliżone przewidywania.
+ 
+ 
+Przyjrzyjmy się dwóm najwyższym wartościom miar na zbiorze testowym: dla RMSE jest to około $2,88$ dla modelu CompPrice, zaś MAE $2,36$ dla modelu Age.
+ 
+Pomimo trzeciego najwyższego $\%$ w jakim stopniu model Age jest dopasowany do danych uczących, sugerując się wynikami RMSE i MAE stwierdzamy, iż jest to dość słaby model pod względem błędu predykcji. Model być może dobrze dopasował się do danych treningowych, ale nie radzi sobie dobrze na innych miarach błędu. Jednak dość mała różnica między RMSE i MAE dla Age, wskazuje na to, iż większość błędów w przewidywaniach ma podobną skale i są bardziej stabilne.
+Zaś model CompPrice ma kilka bardzo dużych błędów i jest znacznie mniej stabilny (jego różnica badanych miar jest jedną z największych). Współczynnik determinacji modelu CompPrice również jest bardzo niski, wynosi około $1\%$. 
+Patrząc na powyższe wnioski oraz przyjmując, iż kluczową miarą w wyborze najgorszego modelu jest RMSE (ponieważ uwzględnia poważniejsze błędy), wiedząc również wówczas, że model ten jest podatny na duże błędy w przewidywaniach oraz jego spełnienie jednego z założeń nie jest pewne. Przyjmujemy model CompPrice za najgorszy model pod względem ogólnej dokładności, jak i niestabilności błędów modelu.
+ 
+ 
+Warto jednak zauważyć, że wykorzystanie tylko jednej zmiennej jako predyktora może nie wystarczyć do dokładnego modelowania, ponieważ istnieje wiele czynników wpływających na sprzedaż. Warto w takich sytuacjach wykorzystać bardziej zaawansowane metody.  
+ 
+Ponadto trzeba mieć na uwadze możliwe wartości odstające. W naszej analizie uznaliśmy je za niewielkie i nieszkodzące, jednak musimy pamiętać, że mogły zakłócić dokładność modelu.
+ 
+Podsumowując, model bazujący na Price jest najlepszym wyborem spośród analizowanych, zaś CompPrice uznaliśmy za najgorszy.
+
+
+
+
+
+
+

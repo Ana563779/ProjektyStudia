@@ -1,0 +1,411 @@
+---
+title: "Regresja i analiza wariancji - Sprawozdanie 3"
+author:
+  name: Karolina Boron, Anna Grych
+  affiliation: Politechnika Krakowska
+subtitle: "Metody klasyfikacji - sprawozdanie"
+output:
+  html_document:
+    df_print: paged
+---
+
+
+# Zadanie
+
+W pliku 'banknotes.csv' znadjują się dane opisujące obrazy banknotów. Dane powstały poprzez transformatę falową (wavelett transform) zastosowaną do obrazów w skali szarości rozmiaru 400x400 pikseli. Po zastosowaniu transformaty wyliczono cztery charakterystyki liczbowe obrazu - wariancję, skośność, kurtozę oraz entropię. 
+
+Za pomocą modelu regresji logistycznej sprawdź czy za pomocą tej metody jesteśmy w stanie dobrze odróżnić banknoty prawdziwe od fałszywych. 
+
+ - Zbuduj i oceń "naiwne" modele klasyfikacji ("głupie" drzewa, klasyfikator większościowy);
+ - Zbuduj i oceń za pomoca macierzy pomyłek model regresji logistycznej (w razie otrzymania ostrzeżenia od software'u stosownie należy je skomentować, ale się nim nie przejmować);
+ - Dokonaj porównania.
+
+# Wczytanie danych 
+
+```{r, message=FALSE, echo=FALSE, warning=FALSE}
+library(tidyverse)
+library(caret)
+library(ggfortify)
+library(ggplot2)
+```
+
+```{r}
+bank <- readr::read_csv('banknote.csv', col_names = FALSE)
+head(bank)
+```
+
+# Opis danych
+
+```{r}
+str(bank)
+```
+
+Dane mają 5 kolumn i 1372 wierszy.
+
+## Nazywanie kolumn
+
+Zmieniamy nazwy kolumn aby dane były czytelniejsze:
+
+```{r}
+names(bank) <- c("variance", "skewness", "kurtosis", "entropy", "class")
+```
+
+## Badanie statystyk opisowych
+
+```{r}
+summary(bank)
+```
+Wartości zmiennej variance mieszczą się w zakresie od -7.0421 do 6.8248. Mediana i średnia są zbliżone, co sugeruje, że dane są równomiernie rozłożone. Skewness znajduje się w szerokim zakresie od -13.773 do 12.952. Jej trzeci kwartyl wynosi 6.815, oznacza to, że niektóre wartości znacznie przewyższają typowy zakres - może to wskazywać na wartości odstające. Zakres kurtozy od -5.2861 do 17.9274 sugeruje, że niektóre próbki mają bardzo wysokie wartości. Średnia wynosząca 1.3976 oraz mediana równa 0.6166 wskazują, że większość obserwacji charakteryzuje się niższą wartością kurtozy. Wartości zmiennej entropy znajdują się w przedziale od -8.5482 do 2.4495, zatem jej wartości są raczej ujemne. Mediana równa -0.5867, sugeruje, że większość wartości jest bliższa zeru, ale z lekkim przesunięciem w kierunku wartości ujemnych. Class to zmienna binarna z wartościami 0 i 1, gdzie średnia 0.4446 sugeruje, że około 44% próbek należy do klasy 1. Oznacza to, że liczba próbek w obu kategoriach jest stosunkowo wyrównana.
+
+Sprawdzamy, czy nie ma braków w danych.
+
+```{r}
+any(is.na(bank))
+```
+
+Zmienną objaśnianą jest zmienna 'class'. Przyjmijmy, że banknot fałszywy jest oznaczany 0, a banknot prawdziwy - 1.
+
+
+# Podział na zbiór testowy i treningowy
+
+```{r}
+set.seed(123)
+train_test_split <- createDataPartition(bank$class, list = FALSE, p=0.75)
+bank_train <- bank[train_test_split,]
+bank_test <- bank[-train_test_split,]
+```
+
+```{r}
+a<-dim(bank_train) 
+b<-dim(bank_test) 
+cat("Wymiary zbioru treningowego: ", a, "\n")
+cat("Wymiary zbioru testowego: ", b, "\n")
+
+table(bank_train$class)
+table(bank_test$class)
+```
+```{r}
+unique(bank$class)
+bank$class <- as.factor(bank$class)
+```
+# Klasyfikator większościowy
+
+```{r}
+table(bank$class)
+
+percentage_class_0 <- sum(bank$class == 0) / nrow(bank)
+print(paste("Procentowy udział klasy 0 w pełnym zbiorze:", round(percentage_class_0 * 100, 2), "%"))
+```
+Widzimy, że w naszym zbiorze przeważają zera, spodziewamy się zatem, iż dokładność klasyfikatora większościowego będzie równa tyle co procentowy udział klasy 0 w zbiorze, ręcznie, wyliczony. 
+
+
+```{r}
+majority_classifier <- function(data, column) {
+  majority_class <- names(sort(table(data[[column]]), decreasing = TRUE))[1]
+  rep(majority_class, nrow(data))
+}
+
+conf_matrix <- table(Prawdziwa = bank$class, Przewidziana = majority_classifier(bank, "class"))
+print(conf_matrix)
+accuracy<-sum(majority_classifier(bank, "class")==bank$class)/nrow(bank)
+
+print(paste("Dokładność klasyfikatora większościowego na pełnym zbiorze:", round(accuracy, 4)))
+```
+
+Klasyfikator większościowy osiąnął dokładność zgodną z naszymi oczekiwaniami. Zauważmy jednak, że jego skuteczność jest ograniczona, gdyż ignoruje on klasę 1. Sprawdzimy jeszcze dokładność klasyfikatora na zbiorze treningowym i testowym, może być to przydatne do porównania z pozostałymi modelami. Możemy śmiało twierdzić, iż jeśli nasz model ma mniejszą dokładność niż klasyfikator większościowy to nie jest on skuteczny.  
+
+
+```{r}
+accuracy_train<-sum(majority_classifier(bank_train, "class")==bank_train$class)/nrow(bank_train)
+accuracy_test<-sum(majority_classifier(bank_test, "class")==bank_test$class)/nrow(bank_test)
+print(paste("Dokładność klasyfikatora większościowego na treningowym zbiorze:", round(accuracy_train, 4)))
+print(paste("Dokładność klasyfikatora większościowego na testowym zbiorze:", round(accuracy_test, 4)))
+```
+
+# "głupie" drzewa
+
+## Wariancja
+
+Przejdźmy do naiwnych drzew decyzyjnych. Spójrzmy na histogram przedstawiajacy rozkład wartości wariancji banknotów, podzielony według klas, który pozwoli nam na określenie optymalnej wartości rodzielającej klasy. 
+
+```{r}
+ggplot(bank, aes(x=variance, fill = class)) + geom_histogram(bins = 12)  + geom_vline(xintercept= 0,linetype="dashed", linewidth=3)+labs(
+    title = "Histogram wariancji banknotów",
+    x = "Wariancja",
+    y = "Liczba obserwacji",
+    fill ="Klasa"
+  ) + theme_minimal()
+```
+
+
+
+Na wykresie możemy zauważyć, iż klasy częściowo się nakładają, jednak różnice w rozkładach pozwoli nam raczej na dość skuteczne ich rozdzielenie. Wybieramy granice w punkcie 0 -  po sprawdzeniu innych bliskich wartości taki podział faktycznie daje najwyższą dokładność.
+
+
+```{r}
+dump_tree1 <-function(banknot){ifelse(banknot$variance<0,1,0)}
+
+
+table(Prawdziwa = bank$class, Przewidziana =  dump_tree1(bank))
+accuracy1<-sum(dump_tree1(bank)==bank$class)/nrow(bank)
+cat("Dokładność na pełnym zbiorze:", accuracy1)
+```
+Otrzymujemy $84,4\%$. Naszym zdaniem jest to dość wysoki wynik jak na "naiwny" model. Zbadajmy jeszcze jak zachowa się nasz naiwny model na zbiorze treningowym i testowym. 
+
+```{r}
+accuracy_train1<-sum(dump_tree1(bank_train)==bank_train$class)/nrow(bank_train)
+accuracy_test1<-sum(dump_tree1(bank_test)==bank_test$class)/nrow(bank_test)
+cat("Dokładność na zbiorze treningowym:", accuracy_train1,"\n")
+cat("Dokładność na zbiorze testowym",accuracy_test1)
+```
+Wyniki na zbiorach treningowym ($84,9\%$) i testowym ($82,8\%$) są zbliżone, co sugeruje, że model nie jest przeuczony. 
+
+Przeprowadzimy podobną analizę histogramów dla wszystkich dostępnych zmiennych, a na końcu porównamy dokładność każdego drzewa. 
+
+## Skośność
+
+```{r}
+ggplot(bank, aes(x=skewness, fill = class)) + geom_histogram(bins = 12) + geom_vline(xintercept= 0.63, linetype="dashed", linewidth=3)  + labs(title = "Histogram skośności banknotów", x = "Skośność", y = "Liczba obserwacji", fill = "Klasa") + theme_minimal()
+```
+
+
+
+Histogram skośności nie jest idealnym wyborem do prostego podziału danych, ponieważ rozkłady obu klas znacząco się pokrywają. Aby znaleźć optymalną wartość graniczną, stosujemy metodę prób i błędów, dopracowując wynik z dokładnością do setnych części.
+
+```{r}
+dump_tree2 <-function(banknot){ifelse(banknot$skewness<0.63,1,0)}
+
+
+table(Prawdziwa = bank$class, Przewidziana = dump_tree2(bank))
+accuracy2<-sum(dump_tree2(bank)==bank$class)/nrow(bank)
+accuracy_train2<-sum(dump_tree2(bank_train)==bank_train$class)/nrow(bank_train)
+accuracy_test2<-sum(dump_tree2(bank_test)==bank_test$class)/nrow(bank_test)
+cat("Dokładność na pełnym zbiorze:", accuracy2,"\n")
+cat("Dokładność na zbiorze treningowym:", accuracy_train2,"\n")
+cat("Dokładność na zbiorze testowym",accuracy_test2)
+```
+
+Otrzymujemy nieco gorszy wynik, co było do przewidzenia na podstawie wykresu. Nakładające się rozkłady utrudniają zarówno nasz model, jak i proces dokładnego podziału danych. Możemy stwierdzić, że model nie jest przeuczony.
+
+## Kurtoza
+
+```{r}
+ggplot(bank, aes(x=kurtosis, fill = class)) + geom_histogram(bins = 12) + geom_vline(xintercept= 0.2, linetype="dashed", linewidth=3) + labs(title = "Histogram kurtozy banknotów",x = "Kurtoza", y = "Liczba obserwacji", fill = "Klasa") + theme_minimal()
+```
+
+
+
+Rozkład naszych wartości nie jest symetryczny. Obie klasy się mocno nakładają po lewej stronie wykresu, co może nam utrudnić separację. 
+
+```{r}
+dump_tree3 <-function(banknot){ifelse(banknot$kurtosis<0.2,1,0)}
+
+table(Prawdziwa = bank$class, Przewidziana = dump_tree3(bank))
+accuracy3<-sum(dump_tree3(bank)==bank$class)/nrow(bank)
+accuracy_train3<-sum(dump_tree3(bank_train)==bank_train$class)/nrow(bank_train)
+accuracy_test3<-sum(dump_tree3(bank_test)==bank_test$class)/nrow(bank_test)
+cat("Dokładność na pełnym zbiorze:", accuracy3,"\n")
+cat("Dokładność na zbiorze treningowym:", accuracy_train3,"\n")
+cat("Dokładność na zbiorze testowym",accuracy_test3)
+```
+
+Model nie jest przeuczony, ale ogólnie nie jest skuteczny. Samodzielnie kurtoza jest słabym kryterium klasyfikacji. Model daje gorszą dokładność niż klasyfikator większościowy. 
+
+## Entropia
+
+```{r}
+ggplot(bank, aes(x=entropy, fill = class)) + geom_histogram(bins = 12) + geom_vline(xintercept= 0.18, linetype="dashed", linewidth=3) + labs(title = "Histogram entropii banknotów", x = "Entropia", y = "Liczba obserwacji", fill="Klasa") + theme_minimal()
+```
+
+
+
+Histogram entropii banknotów pokazuje rozkład klas o charakterystyce podobnej do tej obserwowanej dla kurtozy, jednak odwróconej względem osi poziomej. Duzo obserwacji mamy przy wartości 0, schodzące stopniowo do ujemnych wartości. Wystepuje silne nakładanie się klas, więc podobnie jak przy kurtozie możemy sądzić, iż entropia także nie jest wystarczająco rozdzielającą cechą do jednozmiennej klasyfikacji. 
+
+
+```{r}
+dump_tree4 <-function(banknot){ifelse(banknot$entropy<0.18,1,0)}
+
+table(Prawdziwa = bank$class, Przewidziana = dump_tree4(bank))
+
+accuracy4<-sum(dump_tree4(bank)==bank$class)/nrow(bank)
+accuracy_train4 <- sum(dump_tree4(bank_train) == bank_train$class) / nrow(bank_train)
+accuracy_test4 <- sum(dump_tree4(bank_test) == bank_test$class) / nrow(bank_test)
+cat("Dokładność na pełnym zbiorze:", accuracy4,"\n")
+cat("Dokładność na zbiorze treningowym:", accuracy_train4,"\n")
+cat("Dokładność na zbiorze testowym",accuracy_test4)
+```
+
+Nasze przypuszczenia się potwierdziły.  
+
+Spróbujmy jeszcze rozbudować drzewo, korzystając z dwóch najlepiej rozdzielających zmiennych. Spójrzmy jakie wówczas osiągnie wyniki dokładności. 
+
+## Rozbudowanie drzew decyzyjnych
+
+```{r}
+dump_tree5 <- function(banknot) {
+  ifelse(banknot$variance < 0, 1, 
+         ifelse(banknot$skewness < 0.63, 1, 0))
+}
+
+
+table(Prawdziwa = bank$class, Przewidziana = dump_tree5(bank))
+accuracy5<-sum(dump_tree5(bank)==bank$class)/nrow(bank)
+accuracy_train5<-sum(dump_tree5(bank_train)==bank_train$class)/nrow(bank_train)
+accuracy_test5<-sum(dump_tree5(bank_test)==bank_test$class)/nrow(bank_test)
+
+cat("Dokładność na pełnym zbiorze:", accuracy5,"\n")
+cat("Dokładność na zbiorze treningowym:", accuracy_train5,"\n")
+cat("Dokładność na zbiorze testowym",accuracy_test5)
+```
+
+
+Model rozbudowany uwzględniający zarówno variance, jak i skewness jest bardziej złożony, ale nie prowadzi to do poprawy dokładności, wręcz odwrotnie - obniża ją (w stosunku do korzystania z samej wariancji). Wysoka dokładność na wariancji może nam sugerować, iż może to być wystarczającym predyktorem, a dodanie kolejnych zmiennych jest raczej  niekorzystne. 
+Dodanie skewness jako dodatkowego czynnika wprowadza pewne komplikacje w klasyfikacji, co prowadzi do niższej dokładności.
+
+
+Mimo to spróbujemy bardziej rozbudowanego modelu korzystającego z 3 zmiennych. 
+
+
+```{r}
+
+dump_tree6 <- function(banknot) {
+  ifelse(banknot$variance < (-0.5), 1, 
+         ifelse(banknot$variance < 0 & banknot$skewness < (-4), 1, 
+                ifelse(banknot$variance >= 0 & banknot$kurtosis <5, 0, 1)))
+}
+
+
+                    
+table(Prawdziwa = bank$class, Przewidziana = dump_tree6(bank))
+accuracy6<-sum(dump_tree6(bank)==bank$class)/nrow(bank)
+accuracy_train6<-sum(dump_tree6(bank_train)==bank_train$class)/nrow(bank_train)
+accuracy_test6<-sum(dump_tree6(bank_test)==bank_test$class)/nrow(bank_test)
+cat("Dokładność na pełnym zbiorze:", accuracy6,"\n")
+cat("Dokładność na zbiorze treningowym:", accuracy_train6,"\n")
+cat("Dokładność na zbiorze testowym",accuracy_test6)
+
+
+```
+
+Dokładność się podniosła w porównaniu do wcześniejszej próby i pojedynczych predykatorów. Odpowiednie dodanie bardziej szczegółowych warunków w modelu rzeczywiście może poprawić klasyfikację. 
+
+Jednak ze względu na dosyć mocno nakładające się rozkłady przy większości zmiennych, ciężko nam odpowiednio precyzyjnie zbudować takie rozbudowane modele w tym przypadku. 
+
+
+## Porównanie naiwnych drzew
+
+
+```{r}
+accuracy_table <- data.frame(
+  Model = c("tree_variance", "tree_skewness", "tree_kurtosis", "tree_entropy", "tree_var&skew", "tree_mix"),
+  Accuracy = c(accuracy1, accuracy2, accuracy3, accuracy4, accuracy5, accuracy6),
+  Accuracy_Train = c(accuracy_train1, accuracy_train2, accuracy_train3, accuracy_train4, accuracy_train5, accuracy_train6),
+  Accuracy_Test = c(accuracy_test1, accuracy_test2, accuracy_test3, accuracy_test4, accuracy_test5, accuracy_test6)
+)
+
+print(accuracy_table)
+```
+
+
+
+Jak dobrze wiemy, najwyższą dokładność otrzymaliśmy dla drzewa wykorzystującą wariancję, bo 84%, co jak już wyżej pisaliśmy, można uznać za wynik dość wysoki jak na "naiwne" drzewo, zważając na jego prostotę. Nie mamy wątpliwości, iż ta cecha ma największy wpływ na skuteczność modelu. Można się tego było spodziewać już porównując histogramy. Rozkłady klas na wykresie dla wariancji pokrywały się w najmniejszym stopniu. 
+
+Rozbudowane drzewka obniżyły nam dokładność w stosunku do modelu wykorzystującego wariancję. Jednak dzięki skorzystaniu z kilku zmiennych, takie metody lepiej odzwierciedlają różnorodność danych, co prowadzi do lepszych wyników niż w przypadku (pozostałych) prostszych modeli.
+
+
+Najsłabsze wyniki uzyskano dla entropii oraz kurtozy, są one niższe nawet od klasyfikatora większościowego. 
+Warto zauważyć, że różnice między dokładnością na zbiorze treningowym a testowym są niewielkie, dla każdego z modeli, więc nie mamy ryzyka przeuczenia.
+
+Warto też mieć na uwadzę, iż wartości rodzielajace klasy wybieramy wmiarę możliwości na podstawie wykresów, jednak wciąż posługując się metodą prób i błędów. 
+
+# Model regresji logistycznej
+
+Na początek zudujemy model, który zawiera wszystkie zmienne.
+
+```{r}
+log_model1 <- glm(class ~ ., data=bank_train, family=binomial)
+summary(log_model1)
+```
+
+*Ostrzeżenie glm.fit: dopasowane prawdopodobieństwa numerycznie okazały się być 0 lub 1 pojawia się, gdy dopasowujemy model regresji logistycznej i przewidywane prawdopodobieństwa jednej lub większej liczby obserwacji w ramce danych są nieodróżnialne od 0 lub 1. 
+
+Warto zaznaczyć, że jest to ostrzeżenie nie błąd, nie musi on sugerować, że z naszym modelem jest coś nie tak. Jeśli model działa dobrze na danych testowych, to ostrzeżenie można traktować jako mniej istotne, ale trzeba mieć na uwadzę że może prowadzić do przeuczenia lub numerycznej niestabilności. 
+
+
+Współczynniki dla zmiennych variance, skewness i kurtosis są istotne statystycznie, ponieważ $p < 0.05$, co oznacza, że mają silny wpływ na klasyfikację, natomiast entropy nie jest istotne, bo $p > 0.05$
+Wartość AIC jest dość niska, co wskazuje na dobre dopasowanie modelu. Dodatkowo Residual deviance jest znacznie niższa niż Null deviance, co oznacza, że model znacząco poprawia predykcję w porównaniu do modelu zerowego. Algorytm potrzebował 12 iteracji, aby znaleźć optymalne wartości współczynników modelu (Fisher Scoring).
+
+
+```{r}
+predictions_log1 <- as.factor(as.integer(predict(log_model1, bank_test, type = "response")>0.5))
+confusionMatrix(predictions_log1, as.factor(bank_test$class))
+```
+
+Model osiąga bardzo wysoką dokładność na poziomie 98.83%, co sugeruje niemal perfekcyjne dopasowanie do danych. Zarówno czułość (98.35%), jak i specyficzność (99.38%) są na wysokim poziomie, co oznacza, że model dobrze klasyfikuje zarówno klasę "0", jak i "1". 
+
+Różnica między dokładnością (98.83%) a NIR (53.06%) wskazuje, że model działa z dużą skutecznością i potrafi wyciągać wartościowe wnioski z danych.
+
+
+W celu poprawy generalizacji modelu można rozważyć usunięcie mniej istotnej zmiennej (entropy).
+
+Zbadajmy jak zachowuje się model, gdy usuniemy zmienna
+
+
+```{r}
+log_model2 <- glm(class ~ variance + skewness + kurtosis, data = bank_train, family = binomial)
+summary(log_model2)
+```
+
+W obu modelach, zmienne variance, skewness i kurtosis są statystycznie istotne. Różnica w AIC między modelami jest minimalna, co sugeruje, że Model 1 i Model 2 są niemal równie skuteczne, z lekką przewagą dla drugiego modelu. Model wymaga tyle samo przejść przez dane co poprzedni. 
+
+
+
+```{r}
+predictions_log2 <- as.factor(as.integer(predict(log_model2, bank_test, type = "response")>0.5))
+confusionMatrix(predictions_log2, as.factor(bank_test$class))
+```
+
+Model 2 osiąga wyższą dokładność (0.9942) niż Model 1 (0.9883). Osiąga także większą wyższa czułość: 0.9945 vs 0.9835. Oba modele mają identyczną specyficzność (0.9938), co oznacza, że równie dobrze identyfikują przypadki negatywne.  Ogólnie rzecz biorąc, Model 2 jest nieco lepszy w klasyfikacji, zwłaszcza jeśli chodzi o identyfikację przypadków pozytywnych i negatywnych.
+
+Obydwa modele okazały się podobne i dobrze dopasowane, jednak zmienna entropy faktycznie nie wnosi wiele do modelu, zatem jej usunięcie korzystnie wpływa na model, bo dzięki temu go upraszczamy. 
+
+Pomimo, że wszystkie zmienne są istotne, możemy spróbować usunąć jeszcze jedną zmienną z modelu i zobaczyć jak przekształcony i jeszcze bardziej uprostszony model się zachowuje. 
+
+```{r}
+log_model3 <- glm(class ~ variance + skewness, data = bank_train, family = binomial)
+summary(log_model3)
+```
+
+Zauważmy, że ostrzeżenie "dopasowane prawdopodobieństwa numerycznie okazały się być 0 lub 1" zniknęło, ponieważ model jest prostszy. Ostrzeżenie pojawiło się w dwóch pierwszych modelach, ponieważ modele idealnie rozdzielają klasy, prowadząc do bardzo skrajnych wartości prawdopodobieństw.
+
+Model 2 lepiej dopasowuje się do danych, ponieważ ma niższy AIC w porównaniu do Modelu 3.  Kurtosis jest istotnym składnikiem Modelu 1, co faktycznie sprawia, że ten model jest lepszy pod względem jakości dopasowania. 
+
+
+```{r}
+predictions_log3 <- as.factor(as.integer(predict(log_model3, bank_test, type = "response")>0.5))
+confusionMatrix(predictions_log3, as.factor(bank_test$class))
+```
+
+Model ma znacznie niższą dokładność, czułość i specyficzność, co wskazuje na mniej precyzyjne prognozy w porównaniu do modeli wyżej. 
+
+
+# Porównanie
+
+Modele regresji logistycznej wyraźnie przewyższają drzewa pod względem dokładności, osiągając wyniki nawet powyżej $98\%$, podczas, gdy największa wartość dla drzew na zbiorze testowym osiągała około $85\%$, zaś najniższa wartość jest równa jedynie $51\%$. 
+
+Dodatkowo modele regresji cechują się wyższą czułością i specyficznością, co oznacza, że skuteczniej wykrywają zarówno pozytywne, jak i negatywne obserwacje. 
+
+Model 3, choć mniej dokładny niż Model 1 i Model 2, nadal osiąga wyniki lepsze niż wszystkie nasze drzewa. Ogólnie rzecz biorąc, modele logistyczne są bardziej wydajne i niezawodne w analizowanych zadaniach, niż "głupie" drzewa. Zauważmy także, iż variance jest najbardziej istotną zmienną.
+
+# Wniosek
+ 
+Wyniki pokazują, zatem że regresja logistyczna może być dobrym narzędziem do odróżniania prawdziwych banknotów od fałszywych, ale jej skuteczność zależy od jakości danych i odpowiedniego doboru cech.
+
+
+
+
+
+
+
+
+

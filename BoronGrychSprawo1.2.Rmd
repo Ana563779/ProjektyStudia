@@ -1,0 +1,320 @@
+---
+title: "Regresja i analiza wariancji - Sprawozdanie 1"
+subtitle: 'Regresja liniowa - sprawozdanie - część 2' 
+author: 
+  name: 'Karolina Boron, Anna Grych'
+  affiliation: 'Politechnika Krakowska'
+output: 
+  html_document:
+    theme: readable
+    toc: true
+    toc_float: true
+    df_print: paged
+---
+
+# Zadanie 2
+
+Dopasuj model (lub modele) regresji liniowej wielorakiej przewidujący wartość zmiennej Sales. Model zbuduj w wybrany przez siebie sposób. Oceń jakość modelu za równo pod względem statystyk dostępnych na zbiorze testowym jak i treningowym oraz spełnienie założeń. Uwzględnij zmienne jakościowe. Zinterpretuj otrzymane modele. Porównaj otrzymane modele z modelem regresji liniowej prostej. 
+
+# Import danych
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+library(tidyverse)
+library(dplyr)
+library(ISLR)
+library(caret)
+library(car)
+```
+
+```{r,warning=FALSE}
+carseats <- tibble::as.tibble(ISLR::Carseats)
+head(carseats)
+```
+
+# Założenia modelu regresji wielorakiej
+
+Wykorzystując zapis macierzowy, nasze założenia to
+
+- liniowa zależność między zmienną objaśnianą, a objaśniającą postaci $\boldsymbol{y} = \boldsymbol{X}\boldsymbol{\beta} + \boldsymbol{\varepsilon}$,
+
+- wektor losowy $\varepsilon$ ma średnią $\boldsymbol{0}$,
+
+- wektor losowy $\varepsilon$ ma macierz kowariancji postaci $\sigma^2 \boldsymbol{I}$, gdzie $\sigma^2$ to pewna liczba rzeczywista,
+
+- zmienne losowe $\varepsilon_i, \varepsilon_j$ są ze sobą niezależne, dla różnych $i,j$,
+
+- wektor losowy $\varepsilon$ ma wielowymiarowy rozkład normalny $N(0, \sigma^2 \boldsymbol{I})$,
+
+- rzadna ze zmiennych objaśniających nie jest kombinacją liniową pozostałych, innymi słowy, zmienne objaśniające są liniowo niezależne, a macierz $X$ jest pełnego rzędu kolumnowego.
+
+
+Ponownie jak w pierwszej części sprawozdania w każdym przykładzie przyjmijmy poziom istotności równy $\alpha = 0.05$.
+
+```{r, echo = FALSE}
+library(broom)
+
+model_summary <- function(model, test_data, test_y){
+  model_glance <- broom::glance(model)
+  model_augment <- broom::augment(model)
+  train_mae <- mean(abs(model_augment$.resid))
+  train_mape <- mean(abs(model_augment$.resid/dplyr::pull(model_augment, var=1)))*100
+  predicted_y <- predict(model, test_data)
+  test_rmse <- sqrt(mean((test_y - predicted_y)^2))
+  test_mae <- mean(abs(test_y - predicted_y))
+  test_mape <- mean(abs((test_y - predicted_y)/test_y))*100
+  print("Wartości charakterystyk liczbowych modelu.")
+  print("------------------------------------------")
+  cat("Treningowe R^2 wyniosło: ", model_glance$r.squared, "\n",
+  "Treningowe \"poprawione\" R^2 wyniosło: ", model_glance$adj.r.squared, "\n",
+  "Kryterium informacyjne Akaikego (AIC) wyniosło: ", model_glance$AIC, "\n",
+  "---------------------------------------------", "\n",
+  "Charakterystyki \"out-of-sample\"", "\n",
+  "Charakterystyka |   train  |   test   | \n", 
+  "RMSE wyniosło:  |", model_glance$sigma, "|", test_rmse , "|", "\n",
+    "MAE wyniosło:   |", train_mae, "|",  test_mae, "|" , "\n")
+}
+```
+
+# Podział zbioru i macierz korelacji
+
+Zaczniemy od podzielenia naszego zbioru na treningowy i testowy. $75 \%$ danych zostaje przeznaczonych na zbiór treningowy, a na zbiór testowy $25 \%$.
+
+```{r}
+set.seed(123)
+partition <- caret::createDataPartition(carseats$Sales,list = FALSE,p=0.75)
+carseats_train <- carseats[partition,]
+carseats_test <- carseats[-partition,]
+```
+
+```{r}
+MAE <- function(y_actual, y_predicted){
+  return(mean(abs(y_actual - y_predicted)))
+}
+RMSE <- function(y_actual, y_predicted){
+  return(sqrt(mean((y_actual-y_predicted)^2)))
+}
+```
+
+
+Głównym narzędziem, które pomaga nam badać, które zmienne przydadzą się w znaczny sposób w modelu jest macierz korelacji. Pomaga ona również wykryć kolinearność zmiennych objaśniających, która oczywiście jest niekorzystna. Macierz korelacji najczęściej przedstawiamy w formie graficznej. Zatem zastosujmy ją.
+
+
+```{r}
+carseats_cormat_every <- round(cor(carseats_train[,c(1,2,3,4,5,6,8,9)]),2)
+carseats_cormat_every
+```
+
+```{r}
+library(ggcorrplot)
+ggcorrplot(carseats_cormat_every, type='lower')
+```
+
+Macierz korelacji potwierdza nam wyniki, które otrzymaliśmy w pierwszej cześci sprawozdania odnośnie korelacji zmiennych, pokazując tym samym, które ze zmiennych mają największy wpływ na zmienną Sales.  
+
+Możemy także zauważyć dość wysoką kolinearność między zmiennymi objaśniajacymi Price oraz CompPrice, która jak wspomnieliśmy niekorzystnie by wpłyneła na model. Jednak na podstawie pierwszej częsci naszego sprawozdania możemy odrzucić zmienne, przy których nie mieliśmy pewności, co spełnienia założenia odnośnie liniowowści. Uwzględnienie ich może wpłynąć negatywnie na poprawność i wiarygodność naszego modelu. Te zmienne także nie miały większego wpływu na zmienną Sales. Mowa o modelach CompPrice, Education oraz Population. Zatem problem z kolinearnością miedzy zmiennymi objaśniającymi nam znika. Nie zaobserwowaliśmy przy pozostałych zmiennych objaśniających silnych korelacji. 
+
+# Zmienne jakościowe 
+
+W pierwszej częsci sprawozdania odrzuciliśmy zmienne kategorialne, gdyż jeszcze nie potrafiliśmy z nich prawidłowo korzystać, teraz chcemy je uwzględnić.
+
+Podczas badania statystyk opisowych i analizy boxplotów zmiennych kategorialnych, wyciągneliśmy wnioski, które ze zmiennych mają wpływ na poziom sprzedaży. Tym samym stwierdziliśmy, iż zmienna ShelveLoc ma istotny wpływ na poziom sprzedaży, zmienna Urban nie ma wpływu na zmienną objaśnianą, zaś lokalizacja w USA bądź poza nią również może mieć znaczenie. 
+
+Odrzucamy zatem także zmienną Urban. 
+
+Przypomnijmy jakie wartości pozostałe zmienne kategorialne mogły przyjąć. 
+
+```{r}
+unique(carseats_train$ShelveLoc)
+unique(carseats_train$US)
+```
+Wiemy jednak, iż funkcja lm() jest tak zaprojektowana, że jeżeli mamy w naszej ramce danych dane w postaci "stringów", to R niejako automatycznie dokona one-hot codingu, przejdźmy więc do modelu. 
+
+# Model regresji liniowej wielorakiej z uwzględnieniem zmiennych jakościowych
+
+```{R}
+model_w <- lm(Sales ~ Price + Advertising + Age + Income+ ShelveLoc + US, data = carseats_train)
+summary(model_w)
+```
+
+# Sprawdzenie założeń modelu regresji wielorakiej
+
+## Założenie 1: Zależność liniowa między zmienną objaśnianą, a zmiennymi objaśniającymi
+
+Założenie to sprawdzaliśmy w pierwszej części sprawozdania oraz mamy potwierdzenie w powyższej macierzy korelacji. 
+
+## Założenie 2: Rozkład reszt
+
+Do zbadania normalności reszt przeanalizujemy histogram oraz wykres Q-Q reszt.
+
+```{r}
+ggplot(data.frame(resid = residuals(model_w)), aes(x = resid)) + geom_histogram(bins = 30, color = "darkblue", fill = "lightblue") + labs(title = "Histogram reszt z modelu", x = "Reszty", y = "Częstotliwość") + theme_minimal() + theme(plot.title = element_text(hjust = 0.5, face = 'bold'))
+```
+
+Histogram reszt z modelu wskazuje, że ich rozkład jest zbliżony do normalnego, z większością wartości skoncentrowanych wokół zera. Sugeruje to, że model nie posiada znaczących systematycznych błędów. Można zauważyć drobne odstępstwa od idealnej symetrii i normalności, takie jak możliwe "grubsze ogony" lub lekkie przesunięcia. 
+
+```{r}
+ggplot(data.frame(resid = residuals(model_w)), aes(sample = resid)) + geom_qq() + geom_qq_line(color = "darkblue") + labs(title = "Wykres kwartyl-kwartyl reszt", x = "Kwartyle teoretyczne", y = "Kwartyle próbkowe") + theme_minimal() + theme(plot.title = element_text(hjust = 0.5, face = 'bold'))
+```
+
+Wykres Q-Q pokazuje, że reszty modelu są zbliżone do rozkładu normalnego, ponieważ większość punktów układa się blisko linii prostej. Jednak na krańcach widoczne są niewielkie odchylenia. Ogólnie reszty spełniają założenie o normalności w centralnym zakresie.
+
+Wykresy pokazują, że założenie normalności reszt dla naszego modelu jest spełnione.
+
+## Założenie 3: Zerowa średnia reszt
+
+Do sprawdzenia zerowej średniej reszt używamy klasycznego testu t studenta.
+
+```{r}
+t.test(model_w$residuals)
+```
+P-value = 1, zatem nie ma żadnych dowodów na odrzucenie hipotezy zerowej.
+Test potwierdza, że średnia reszt jest statystycznie równa 0, co wskazuje, że model nie ma systematycznych błędów w przewidywaniach.
+
+Warto jednak jeszcze zwrócić uwagę na wykres zależności reszt do dopasowanych wartości. 
+
+
+
+```{r}
+ggplot(data.frame(Pred = fitted(model_w), Resid = residuals(model_w)), aes(x = Pred, y = Resid)) + geom_point(alpha = 0.5, color = "violet") + geom_hline(yintercept = 0, linetype = "dashed", color = "darkblue") + labs(title = "Wykres zależności reszt do przewidywanych wartości", x = "Przewidywane wartości", y = "Reszty") + theme_minimal() + theme(plot.title = element_text(hjust = 0.5, face = 'bold'))
+```
+
+Przerywana linia przebiega na wysokości 0. Zatem potwierdza to spełnienie założenia o średniej reszt wynoszącej 0.
+
+## Założenie 4: Niezależność reszt
+
+Na powyższym wykresie zauważamy także brak widocznej zależności reszt od przewidywanych wartości, rozkład reszt jest w większości losowy. Dla pewności użyjemy jeszcze test Durbina Watsona. 
+
+```{r, message=FALSE}
+library(lmtest)
+lmtest::dwtest(model_w)
+```
+
+Test Durbin-Watsona wskazuje, że wartość statystyki (1.8812) jest bliska 2, co sugeruje brak istotnej autokorelacji reszt. Wartość p (0.1498) potwierdza, że nie ma podstaw do odrzucenia hipotezy zerowej o niezależności reszt.
+
+Zatem model regresji jest poprawny pod względem założenia o niezależności reszt, co popierałby powyższy wykres.
+
+## Założenie 5: Homoskedastyczność
+
+```{r}
+ggplot(model_w, aes(.fitted, sqrt(abs(.stdresid)))) +  geom_point(color = "lightblue") + stat_smooth(method = "loess", formula = y ~ x, se = FALSE, color = "darkblue") + labs(title = "Zależność pierwiastka standaryzowanych reszt od dopasowanych wartości", x = "Dopasowane wartości", y = "Pierwiastek standaryzowanych reszt") + theme_minimal()
+```
+
+Wykres pokazuje, że reszty są losowo rozrzucone wokół poziomej linii, co sugeruje spełnienie założenia homoskedastyczności. Brak widocznego wzorca oznacza stałość wariancji reszt względem wartości dopasowanych. Kilka punktów odstających może wskazywać na nieliczne anomalie, ale ich wpływ wydaje się niewielki. Ogólnie model spełnia kluczowe założenia.
+
+## Założenie 6: Wielokolinearność zmiennych objaśniających
+
+```{r}
+vif(model_w)
+```
+
+Wyniki GVIF pokazują, że większość zmiennych w modelu nie ma dużych problemów z wielokolinearnością. Zmienne takie jak Price, Age, Income i ShelveLoc mają wartości GVIF bliskie 1, co oznacza, że nie są silnie skorelowane z innymi zmiennymi w modelu. Zmienne Advertising i US mają trochę wyższe wartości GVIF, co sugeruje, że są nieco bardziej skorelowane z innymi zmiennymi, ale nadal nie jest to problematyczne. Warto jednak zastanowić sięnad usunięciem jednej z tych wspomnianych zmiennych. Żadna zmienna nie przekracza wartości GVIF powyżej 10, więc nie ma dużego ryzyka multikollinearności. Ogólnie rzecz biorąc, model jest w porządku pod względem współliniowości, choć warto zwrócić uwagę na zmienne o wyższych wartościach GVIF, takie jak Advertising i US. Do zmiennych numerycznych również brak kolinearności między zmiennymi objaśniającymi mamy potwierdzenie w powyższej macierzy korelacji. 
+
+### Sprawdzenie jakosci modelu 
+
+```{r}
+summary(model_w)
+```
+
+Model regresji wykazuje, że zmienne takie jak Price, Advertising, Age, Income, oraz ShelveLoc mają istotny wpływ na sprzedaż (Sales), podczas gdy zmienna US nie ma statystycznie istotnego wpływu. 
+
+Zmienne związane z lokalizacją produktu na półce, ShelveLocGood i ShelveLocMedium, mają istotny wpływ na sprzedaż, przy czym produkty na "dobrej" półce generują znacznie wyższe wyniki sprzedaży. Zmienna USYes ma współczynnik -0.1991, ale p-value jest wysokie (0.449), co oznacza, że zmienna ta nie jest zatem statystycznie istotna. Możliwe, że zmienna US wpływa na sprzedaż tylko w interakcji z innymi zmiennymi, my jednak dla uproszczenia modelu ją usuniemy, co również sugerował nam współczynnik GVIF. 
+
+```{r}
+model_summary(model_w, carseats_test, carseats_test$Sales)
+```
+
+Wartości charakterystyk liczbowych modelu wskazują na jego ogólne dopasowanie i zdolność do generalizacji. Treningowe $R^2$ wyniosło 0.6897, co oznacza, że model wyjaśnia około $69\%$ zmienności w danych treningowych, ale sugeruje, że istnieją inne czynniki, które również mają wpływ na sprzedaż.  Z kolei treningowe "poprawione" $R^2$ wynoszące 0.6823 uwzględnia liczbę zmiennych w modelu i wskazuje, że model jest dobrze dopasowany do danych, choć można go jeszcze udoskonalić. Kryterium informacyjne Akaikego (AIC) wyniosło 1141.791, co jest używane do porównania różnych modeli — niższa wartość AIC oznacza lepsze dopasowanie, ale musi być oceniane w kontekście innych modeli.
+
+Wartości RMSE pokazują średnią odchyłkę między wartościami rzeczywistymi a przewidywanymi przez model. RMSE dla danych treningowych wynosi 1.5861, co oznacza, że średnia odchyłka w przewidywaniu sprzedaży na danych treningowych wynosi około 1.59 jednostki. Natomiast RMSE dla danych testowych wynosi 1.4129, co sugeruje, że model nieco lepiej sprawdza się na nowych danych, z mniejszym błędem przewidywania.
+
+MAE dla danych treningowych wynosi 1.2414, co oznacza, że średni błąd bezwzględny na danych treningowych wynosi około 1.24 jednostki sprzedaży. Dla danych testowych MAE wynosi 1.1112, co pokazuje, że model osiąga lepsze wyniki na danych testowych, przewidując sprzedaż z mniejszym błędem.
+
+Podsumowując, model jest dobrze dopasowany do danych treningowych, ale wykazuje pewną poprawę w przewidywaniu na nowych danych, co świadczy o jego zdolności do generalizacji. Wartości RMSE i MAE są stosunkowo niewielkie, co sugeruje, że model nie popełnia dużych błędów w prognozowaniu.
+
+# Dopasowanie drugiego modelu
+
+Jak wspomnieliśmy, stwórzmy model bez zmiennej US. 
+
+```{R}
+model_w2 <- lm(Sales ~ Price + Advertising + Age + Income+ ShelveLoc, data = carseats_train)
+summary(model_w2)
+```
+# Sprawdzenie założeń
+
+Ponownie sprawdzimy założenia dla nowego modelu. 
+
+## Założenie 2: Rozkład reszt
+
+Do zbadania normalności reszt przeanalizujemy histogram oraz wykres Q-Q reszt.
+
+```{r}
+ggplot(data.frame(resid = residuals(model_w2)), aes(x = resid)) + geom_histogram(bins = 30, color = "darkblue", fill = "lightblue") + labs(title = "Histogram reszt z modelu", x = "Reszty", y = "Częstotliwość") + theme_minimal() + theme(plot.title = element_text(hjust = 0.5, face = 'bold'))
+```
+
+```{r}
+ggplot(data.frame(resid = residuals(model_w2)), aes(sample = resid)) + geom_qq() + geom_qq_line(color = "darkblue") + labs(title = "Wykres kwartyl-kwartyl reszt", x = "Kwartyle teoretyczne", y = "Kwartyle próbkowe") + theme_minimal() + theme(plot.title = element_text(hjust = 0.5, face = 'bold'))
+```
+
+
+Wykresy pokazują, że założenie normalności reszt dla naszego modelu jest spełnione. 
+
+## Założenie 3: Zerowa średnia reszt
+
+Do sprawdzenia zerowej średniej reszt używamy klasycznego testu t studenta.
+
+```{r}
+t.test(model_w2$residuals)
+```
+Założenie to jest spełnione. Sugeruje o tym wartość $p-value=1 > 0.05$, przedział ufności zawierający $0$, jak i wartość t oraz średnia wynosząca praktycznie $0$. 
+
+Warto jednak jeszcze zwrócić uwagę na wykres zależności reszt do dopasowanych wartości. 
+
+```{r}
+ggplot(data.frame(Pred = fitted(model_w2), Resid = residuals(model_w2)), aes(x = Pred, y = Resid)) + geom_point(alpha = 0.5, color = "violet") + geom_hline(yintercept = 0, linetype = "dashed", color = "darkblue") + labs(title = "Wykres zależności reszt do przewidywanych wartości", x = "Przewidywane wartości", y = "Reszty") + theme_minimal() + theme(plot.title = element_text(hjust = 0.5, face = 'bold'))
+```
+
+Przerywana linia przebiega na wysokości 0. Zatem potwierdza to spełnienie założenia o średniej reszt wynoszącej 0.
+
+## Założenie 4: Niezależność reszt
+
+Na powyższym wykresie zauważamy także brak widocznej zależności reszt od przewidywanych wartości, rozkład reszt jest w większości losowy. Dla pewności użyjemy jeszcze test Durbina Watsona. 
+
+```{r, message=FALSE}
+library(lmtest)
+lmtest::dwtest(model_w2)
+```
+
+Test Durbin-Watsona wskazuje, że wartość statystyki (1.8775) jest bliska 2, co sugeruje brak istotnej autokorelacji reszt. Wartość p (0.1424) potwierdza, że nie ma podstaw do odrzucenia hipotezy zerowej o niezależności reszt.
+
+Zatem model regresji jest poprawny pod względem założenia o niezależności reszt, co popierałby powyższy wykres.
+
+## Założenie 5: Homoskedastyczność
+
+```{r}
+ggplot(model_w2, aes(.fitted, sqrt(abs(.stdresid)))) +  geom_point(color = "lightblue") + stat_smooth(method = "loess", formula = y ~ x, se = FALSE, color = "darkblue") + labs(title = "Zależność pierwiastka standaryzowanych reszt od dopasowanych wartości", x = "Dopasowane wartości", y = "Pierwiastek standaryzowanych reszt") + theme_minimal()
+```
+
+Wykres reszt wskazuje ich losowy rozrzut wokół poziomej linii, co potwierdza spełnienie założenia homoskedastyczności. Brak wzorca sugeruje stałość wariancji, a nieliczne punkty odstające mają minimalny wpływ na model. Ogólnie założenia są spełnione.
+
+## Założenie 6: Wielokolinearność zmiennych objaśniających
+
+```{r}
+vif(model_w2)
+```
+Analiza współliniowości na podstawie GVIF pokazuje, że wszystkie zmienne w modelu mają bardzo niskie wartości, co oznacza brak problemów z multikolinearnością. Wartości GVIF^(1/(2*Df)) dla wszystkich zmiennych są bliskie 1, co potwierdza, że zmienne nie są silnie skorelowane. Nawet dla zmiennej kategorycznej, skalowany GVIF wskazuje na brak ryzyka współliniowości. W związku z tym model jest stabilny. Nie ma potrzeby eliminowania lub modyfikowania zmiennych ze względu na współliniowość.
+
+```{r}
+model_summary(model_w2, carseats_test, carseats_test$Sales)
+```
+
+Porównując oba modele, różnice w wynikach są minimalne. Model 1 ma nieco wyższe $R^2$ (0.6897) na danych treningowych w porównaniu do Modelu 2 (0.6891), co sugeruje nieznacznie lepsze dopasowanie do danych treningowych. Jednak różnica ta jest niewielka, zatem pominięcie zmiennej US praktycznie nie pogarsza dopasowania modelu. Podobna sytuacja jest przy "poprawionym" $R^2$. W Modelu 2 $R^2=(0.6827)$ jest nieznacznie wyższe niż w Modelu 1 $(0.6823)$. Wartość AIC w Modelu 2 (1140.38) jest lepsza od Modelu 1 (1141.79), co wskazuje na lepszą równowagę między dopasowaniem, a złożonością modelu. W przypadku błędów predykcji, Model 2 ma mniejsze RMSE (1.405 vs 1.413) i MAE (1.110 vs 1.111) na danych testowych, co wskazuje na lepszą dokładność na tych danych. Na danych treningowych różnice w RMSE (1.585 vs 1.586) i MAE (1.240 vs 1.241) są niemal identyczne. Ogólnie, oba modele wykazują podobną wydajność, ale Model 2 wydaje się nieco lepszy na danych testowych, a także szczególnie w kontekście AIC i błędów predykcji. Model staje się prostszy i eliminuje nieistotną zmienną. Podsumowując lepszym modelem jest model bez US.  
+
+
+# Porównanie modelu regresji liniowej wielorakiej z modelem regresji liniowej prostej
+
+Porównując modele regresji wielorakiej z modelami regresji liniowej prostej, zauważamy, że modele wielorakie mają wyraźnie lepsze dopasowanie do danych. Model regresji liniowej prostej uwzględnia tylko jedną zmienną, co ogranicza jego zdolność do uchwycenia złożonych zależności, przez co $R^2$ jest niższe. Modele wielorakie osiągają wyższe wartości $R^2$, co pozwala na wyjaśnienie większej części zmienności w danych.
+
+Porównując najlepszy model regresji liniowej wielorakiej z najlepszym modelem regresji liniowej prostej możemy zauważyć następujące różnice. $R^2$ dla drugiego modelu wielorakiego - modelu_w2 wynosi 0.6891, co oznacza, że wyjaśnia on około $69\%$ zmienności w danych, podczas gdy dla modelu prostego zmiennej Price wartość ta to zaledwie 0.1574, czyli tylko $16\%$. Wartość RMSE dla modelu wielorakiego na danych testowych wynosi 1.405, co jest niższe niż 2.374 dla modelu prostego, co wskazuje na lepsze dopasowanie. Ponadto, MAE dla modelu wielorakiego wynosi 1.110 na danych testowych, a dla modelu prostego 1.986, co również sugeruje mniejszy błąd prognoz w przypadku modelu wielorakiego. Model wieloraki ma także niższy błąd standardowy, co potwierdza jego precyzyjność. 
+
+Regresja prosta, choć łatwiejsza do zrozumienia, nie uwzględnia wystarczającej liczby czynników wpływających na sprzedaż. Model wieloraki jest bardziej wszechstronny i precyzyjny, a także lepiej radzi sobie z prognozowaniem na danych testowych. 
+Podsumowując, model wieloraki daje znacząco lepsze wyniki i jest bardziej odpowiedni do przewidywania sprzedaży niż regresja prosta oparta tylko na cenie.
